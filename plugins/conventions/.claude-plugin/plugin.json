@@ -1,6 +1,6 @@
 {
   "name": "conventions",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Git guardrails, exact-pinned dependencies, PR size cap and auto-formatting hooks driven by a per-repo .claude/conventions.json, plus generic skills and agents.",
   "author": {
     "name": "Azurioh"

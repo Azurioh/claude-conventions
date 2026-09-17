@@ -43,16 +43,52 @@ Run in the repository root, once.
 | 1. enable the plugin | `ccprofile apply conventions` | `enabledPlugins["conventions@claude-conventions"] = true` — written to `.claude/settings.local.json` when `.claude/settings.json` already owns the key (the port step seeds it that way), else to `.claude/settings.json` |
 | 2. start a session | `claude` | the branch banner appears; hooks warn `conventions/<hook>: .claude/conventions.json missing — skipped` until step 3 |
 | 3. port the rules | `/conventions:port-claude-config` | discovery → mapping table + open questions → **stops** → after your answers writes `CLAUDE.md`, `.claude/rules/{workflow,architecture,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
-| 4. commit | `git add CLAUDE.md .claude .gitignore && git commit` | `.claude/settings.local.json` stays ignored |
+| 4. app rules | `/conventions:app-rules <app>` (or `all`) | analysis of the app's code → preview of `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md` and the app's **Test layout** rows → **stops** → writes after confirmation (single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md`) |
+| 5. commit | `git add CLAUDE.md .claude .gitignore && git commit` | `.claude/settings.local.json` stays ignored |
 
 A repository can stay at step 2 (guardrails that need no repository value —
 bare `git stash`, exact-pin — already work); the branch-related checks skip
 until `.claude/conventions.json` carries `integrationBranch`.
+Step 3 writes the generic rules (the same for every repository); step 4 writes
+what only this app's code can tell — rings, composition root, forbidden
+imports, test prerequisites — and a per-app implementer agent.
 
 Skills that fork into a verifier (`/conventions:verify-app`,
 `/conventions:test-gaps`) need a `verifier` agent in `~/.claude/agents/` — a
 personal agent that runs commands and triages failures. It is not shipped
 here.
+
+## Bootstrap a repository with Claude
+
+Claude in a fresh repository has not read this README. Open a session in the
+repository root and paste the prompt below; it runs the per-project setup end
+to end and stops at every confirmation point.
+
+```text
+Bootstrap this repository with the claude-conventions plugin. Do not commit anything.
+
+1. Register the marketplace unless `claude plugin marketplace list` already shows it:
+   `claude plugin marketplace add Azurioh/claude-conventions`. Then run
+   `ccprofile apply conventions` and report the `enabledPlugins` entry it wrote and
+   in which file (`.claude/settings.local.json` or `.claude/settings.json`).
+   Plugins load at session start: if `/conventions:port-claude-config` is not
+   available yet, tell me to restart the session and stop here; I will paste this
+   prompt again.
+2. Run `/conventions:port-claude-config`. Stop at the mapping table, ask me the open
+   questions, and write only after I confirm.
+3. For each app listed in `.claude/conventions.json#apps` (or the single app when the
+   key is absent), run `/conventions:app-rules <app>`. Stop at the preview and write
+   only after I confirm.
+4. Run `/conventions:test-gaps all` and report the result. End with the list of files
+   you created and the commands you verified.
+```
+
+| After step | You have |
+|---|---|
+| 1 | the plugin enabled for this repository: hooks, `/conventions:*` skills and `conventions:*` agents on the next session |
+| 2 | `CLAUDE.md`, `.claude/rules/{workflow,architecture,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
+| 3 | per app: `.claude/rules/<app>/architecture.md`, `conventions.md` when the code has recurring patterns, `.claude/agents/<app>-dev.md`, the app's rows in the **Test layout** table |
+| 4 | the list of changed source files without a test, and a working tree to review with `git diff` and commit |
 
 ## How hooks resolve values
 
@@ -98,6 +134,7 @@ Skills (invoke as `/conventions:<name>`):
 | `release` | prepare the integration → production PR (changelog by app, migrations, env vars); never merges; user-invoked only | `integrationBranch`, `productionBranch`, `apps` |
 | `deps-audit` | run the dependency audit with the repo's package manager and fix advisories (exact-pinned bumps, transitive pins); user-invoked only | `packageManager` |
 | `port-claude-config [--refresh]` | port the rule templates into the repository (see Per-project setup); `--refresh` re-renders the template-owned sections only (see Update) | everything |
+| `app-rules <app\|all>` | analyse one app's code and write its project-specific rules — `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md`, the app's **Test layout** rows — after a preview and confirmation; single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md` | `apps`, `adrDir` |
 
 Agents (available as `conventions:<name>` subagents):
 
