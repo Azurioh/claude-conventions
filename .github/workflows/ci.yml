@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: shellcheck + hook tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck jq
+
+      - name: shellcheck
+        run: shellcheck plugins/conventions/hooks/*.sh plugins/conventions/skills/port-claude-config/scripts/*.sh tests/*.sh
+
+      - name: Hook tests
+        run: tests/run.sh

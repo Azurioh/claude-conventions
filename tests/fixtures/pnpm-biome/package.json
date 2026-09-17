@@ -1,0 +1,10 @@
+{
+  "name": "fx-pnpm-biome",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.4.2",
+  "scripts": {
+    "lint": "echo lint ok",
+    "test": "echo test ok"
+  }
+}

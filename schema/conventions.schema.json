@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Azurioh/claude-conventions/main/schema/conventions.schema.json",
+  "title": "Claude conventions",
+  "description": "Per-repository values read by the conventions plugin (hooks, skills and agents) from .claude/conventions.json. Only integrationBranch is required; every other key overrides a detected or default value. Unknown keys are allowed: the hooks ignore them.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["integrationBranch"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URL of this schema, for editor validation."
+    },
+    "integrationBranch": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Branch every pull request targets. Required: hooks that need it warn and skip their check when it is absent."
+    },
+    "productionBranch": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Deployed branch, only reachable through the release pair (gh pr create --base <productionBranch> --head <integrationBranch>). Default: the branch origin/HEAD points to, else main. Must differ from integrationBranch."
+    },
+    "packageManager": {
+      "type": "string",
+      "enum": ["pnpm", "npm", "yarn", "bun"],
+      "description": "Package manager whose add/install commands must pin exact versions. Default: detected from the lockfile (pnpm-lock.yaml, package-lock.json, yarn.lock, bun.lock/bun.lockb); two lockfiles leave it unset and the dependency guard warns instead of blocking."
+    },
+    "formatter": {
+      "type": "string",
+      "enum": ["biome", "prettier", "none"],
+      "description": "Formatter run on every edited .ts/.tsx/.js/.mjs/.cjs/.json/.css file. Default: biome when biome.json or biome.jsonc exists, prettier when a .prettierrc*, prettier.config.* or a prettier key in package.json exists, else none."
+    },
+    "prSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Size cap enforced on gh pr create.",
+      "properties": {
+        "lines": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum changed lines (additions + deletions). Default: 400."
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum changed files. Default: 15."
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Glob patterns not counted toward the cap. Replaces the whole default list: **/pnpm-lock.yaml, **/package-lock.json, **/yarn.lock, **/migrations/**, **/components/ui/**."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "PR label that bypasses the cap when passed as --label. Default: large-pr."
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "description": "Application name to directory (relative to the repository root) for multi-app repositories. Absent or empty: single-app repository.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "adrDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Directory of the Architecture Decision Records. Default: docs/adr."
+    },
+    "deployNote": {
+      "type": "string",
+      "description": "Free-text note about how the production branch is deployed; written by the port skill and rendered into the rule templates. Not read by the hooks."
+    }
+  }
+}

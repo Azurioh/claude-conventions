@@ -1,0 +1,21 @@
+{
+  "name": "claude-conventions",
+  "owner": {
+    "name": "Azurioh"
+  },
+  "metadata": {
+    "description": "Project-agnostic engineering conventions for Claude Code: git guardrails, exact-pinned dependencies, PR size cap, auto-formatting, generic skills and agents, and a port skill that writes the rule templates into a repository.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "conventions",
+      "description": "Git guardrails, exact-pinned dependencies, PR size cap and auto-formatting hooks driven by a per-repo .claude/conventions.json, plus generic skills and agents.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Azurioh"
+      },
+      "source": "./plugins/conventions"
+    }
+  ]
+}

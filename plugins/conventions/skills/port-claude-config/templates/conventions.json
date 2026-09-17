@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Azurioh/claude-conventions/main/schema/conventions.schema.json",
+  "integrationBranch": "{{INTEGRATION_BRANCH}}",
+  "productionBranch": "{{PRODUCTION_BRANCH}}",
+  "packageManager": "{{PKG_MANAGER}}",
+  "formatter": "{{FORMATTER}}",
+  "prSize": {
+    "lines": {{PR_SIZE_LINES}},
+    "files": {{PR_SIZE_FILES}},
+    "exclude": [
+      "**/pnpm-lock.yaml",
+      "**/package-lock.json",
+      "**/yarn.lock",
+      "**/bun.lock",
+      "**/bun.lockb",
+      "**/migrations/**",
+      "**/components/ui/**"
+    ],
+    "label": "{{PR_SIZE_LABEL}}"
+  },
+  "apps": {},
+  "adrDir": "{{ADR_DIR}}"
+}

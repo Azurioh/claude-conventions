@@ -1,0 +1,3 @@
+# Let shellcheck follow "source" into lib.sh next to each hook.
+external-sources=true
+source-path=SCRIPTDIR

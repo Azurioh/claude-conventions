@@ -1,0 +1,7 @@
+{
+  "integrationBranch": "develop",
+  "productionBranch": "main",
+  "apps": {
+    "api": "apps/api"
+  }
+}

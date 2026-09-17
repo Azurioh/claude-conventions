@@ -1,0 +1,5 @@
+{
+  "description": "Repo conventions plugin: git guardrails, exact-pinned deps, PR size cap, formatting hooks, generic skills and agents",
+  "plugins": ["conventions@claude-conventions"],
+  "skills": []
+}
