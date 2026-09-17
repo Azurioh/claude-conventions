@@ -35,7 +35,7 @@ Every finding below carries a `file:line` (or a directory). A claim without one 
 - **Dead-code tool**: the sheet's sequence, else `jq -r '.scripts' "$APP/package.json"`.
 - **Generated code**: scripts named `generate`, `codegen`, `build:*` that write inputs the type check needs; `.gitignore` lines under the app; a `generated/` dir.
 - **Recurring patterns**: factory prefixes — `grep -rhoE 'export (const|function) [a-z]+[A-Z][A-Za-z]*' "$APP/src" | sed -E 's/.* ([a-z]+)[A-Z].*/\1/' | sort | uniq -c | sort -rn | head`; error hierarchy — `grep -rn 'extends [A-Za-z]*Error' "$APP/src"`; module or route registration lists; file naming per ring.
-- **Already documented**: the app's README, `docs/`, ADRs naming the app (`jq -r '.adrDir // "docs/adr"' .claude/conventions.json`), and `.claude/rules/architecture.md` — a rule already stated there is never repeated in the app file.
+- **Already documented**: the app's README, `docs/`, ADRs naming the app (`jq -r '.adrDir // "docs/adr"' .claude/conventions.json`), and `.claude/rules/{architecture,coding}.md` — a rule already stated there is never repeated in the app file.
 
 ## Step 3 — propose, then STOP
 

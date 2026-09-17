@@ -12,7 +12,8 @@ Why a plugin: every repository used to copy the same hooks, skills and rules by
 hand, and the copies drifted. Here the reusable layer is installed once per
 machine, enabled per repository, and updated centrally; only the values that
 differ between repositories (branches, package manager, formatter, size cap,
-app list) live in the repository.
+app list) live in the repository. The rule templates themselves are readable
+under [`plugins/conventions/rules/`](plugins/conventions/rules/) (see Rules).
 
 ## Install
 
@@ -42,7 +43,7 @@ Run in the repository root, once.
 |---|---|---|
 | 1. enable the plugin | `ccprofile apply conventions` | `enabledPlugins["conventions@claude-conventions"] = true` — written to `.claude/settings.local.json` when `.claude/settings.json` already owns the key (the port step seeds it that way), else to `.claude/settings.json` |
 | 2. start a session | `claude` | the branch banner appears; hooks warn `conventions/<hook>: .claude/conventions.json missing — skipped` until step 3 |
-| 3. port the rules | `/conventions:port-claude-config` | discovery → mapping table + open questions → **stops** → after your answers writes `CLAUDE.md`, `.claude/rules/{workflow,architecture,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
+| 3. port the rules | `/conventions:port-claude-config` | discovery → mapping table + open questions → **stops** → after your answers writes `CLAUDE.md`, `.claude/rules/{workflow,architecture,coding,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
 | 4. app rules | `/conventions:app-rules <app>` (or `all`) | analysis of the app's code → preview of `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md` and the app's **Test layout** rows → **stops** → writes after confirmation (single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md`) |
 | 5. commit | `git add CLAUDE.md .claude .gitignore && git commit` | `.claude/settings.local.json` stays ignored |
 
@@ -86,7 +87,7 @@ Bootstrap this repository with the claude-conventions plugin. Do not commit anyt
 | After step | You have |
 |---|---|
 | 1 | the plugin enabled for this repository: hooks, `/conventions:*` skills and `conventions:*` agents on the next session |
-| 2 | `CLAUDE.md`, `.claude/rules/{workflow,architecture,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
+| 2 | `CLAUDE.md`, `.claude/rules/{workflow,architecture,coding,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
 | 3 | per app: `.claude/rules/<app>/architecture.md`, `conventions.md` when the code has recurring patterns, `.claude/agents/<app>-dev.md`, the app's rows in the **Test layout** table |
 | 4 | the list of changed source files without a test, and a working tree to review with `git diff` and commit |
 
@@ -120,6 +121,28 @@ outside a git repository every hook exits 0 silently):
 | `pr-size` | PreToolUse `Bash` | `gh pr create` whose diff against `--base` exceeds `prSize.lines` or `prSize.files` after `prSize.exclude` | `--label <prSize.label>`; the release pair; missing `--base` (guard-git already refuses it) |
 | `format` | PostToolUse `Edit\|Write` | nothing (never blocks) | runs `biome check --write` / `prettier --write` on `.ts .tsx .js .mjs .cjs .json .css` via `node_modules/.bin/<formatter>` or PATH; silent when not installed; one stderr line when the formatter fails |
 | `branch-info` | SessionStart | nothing | prints `git branch:`, `upstream:`, a `WARNING:` when on a protected branch, and a `conventions:` line when the file is missing, not JSON, lacks `integrationBranch`, or has `integrationBranch == productionBranch` |
+
+## Rules
+
+The generic rules are plain Markdown templates under
+[`plugins/conventions/rules/`](plugins/conventions/rules/). They hold only what
+holds for any project and cannot be read from the code — constraints,
+boundaries, prerequisites and traps. `/conventions:port-claude-config` copies
+them into the repository (`CLAUDE.md`, `.claude/rules/<file>`) with the
+placeholders resolved, `--refresh` rewrites their sentinel sections later, and
+what is specific to one app (rings, composition root, forbidden imports, test
+prerequisites) comes from `/conventions:app-rules`, never from these files.
+
+| File | Enforces |
+|---|---|
+| [`CLAUDE.md`](plugins/conventions/rules/CLAUDE.md) | the entry point: where the rules live, the branch pair, the dependency and PR commands, the app table |
+| [`workflow.md`](plugins/conventions/rules/workflow.md) | branches, commit format, PR hygiene (size cap, stacked PRs), exact-pinned dependencies, shared-worktree stash rules, verification before "done" |
+| [`architecture.md`](plugins/conventions/rules/architecture.md) | feature-first structure, one registration point, injected dependencies and boot-time config, ports and adapters with in-memory twins, ring direction, cross-feature and vendor import boundaries, database-level invariants, test requirement per ring and the project-owned Test layout table |
+| [`coding.md`](plugins/conventions/rules/coding.md) | search before creating, no scaffolding, migration shipped with the change, clean build; braces, loop headers, path aliases, typed business errors, injected logger, message catalogue, `create*` factories; vendor SDKs under infrastructure only, workspace packages built first, generated files never hand-edited, toolchain bumps in their own PR |
+| [`knowledge.md`](plugins/conventions/rules/knowledge.md) | when to write an ADR, when to append a pitfall, where a new rule belongs and what a rule may state |
+| [`pitfalls.md`](plugins/conventions/rules/pitfalls.md) | the header and entry format of the recurring-traps file (entries are project-owned) |
+| [`commands.md`](plugins/conventions/rules/commands.md) | the per-app command sheet skeleton: CI sequence, order rationale, env-dependent steps |
+| [`_project/`](plugins/conventions/rules/_project/) | `settings.json`, `conventions.json` and the `gitignore` negations written once at port time, never refreshed |
 
 ## Skills and agents
 
@@ -156,7 +179,8 @@ live inside each repository.
 |---|---|---|
 | a hook, a skill or an agent under `plugins/conventions/` | `claude plugin update conventions@claude-conventions` | new behaviour on the next session, no file changes in the repository. Only a **new version** is installed: bump `version` in both `.claude-plugin/marketplace.json` and `plugins/conventions/.claude-plugin/plugin.json` before pushing, or the update reports "already at the latest version" |
 | the profile (`profiles/conventions.json`) | `ccprofile sync` (`ccprofile verify` shows the drift first) | `.claude/settings.local.json` reconciled with the profile |
-| a rule template under `skills/port-claude-config/templates/` | `/conventions:port-claude-config --refresh` | the template-owned sections of the rule files rewritten; review with `git diff`, then commit |
+| a rule template under `plugins/conventions/rules/` | `/conventions:port-claude-config --refresh` | the template-owned sections of the rule files rewritten; review with `git diff`, then commit |
+| a **new** rule template (a file the repo does not have yet) | `/conventions:port-claude-config` again, answering only for the missing file, or `render.sh plugins/conventions/rules/<file>.md .claude/conventions.json > .claude/rules/<file>.md` from the plugin cache | refresh skips missing targets; the file is created once, then refreshed like the others |
 
 `--refresh` asks nothing and runs `refresh.sh <repo-root>`: for each template that
 carries `<!-- conventions:begin <id> -->` … `<!-- conventions:end <id> -->`
@@ -195,7 +219,8 @@ Layout:
 | `.claude-plugin/marketplace.json` | marketplace `claude-conventions`, one plugin entry |
 | `plugins/conventions/.claude-plugin/plugin.json` | plugin manifest; version must match the marketplace entry |
 | `plugins/conventions/hooks/` | `hooks.json`, `lib.sh` (segment splitting, value lookup, detectors), one script per hook |
-| `plugins/conventions/skills/<name>/SKILL.md` | skills; `port-claude-config/` also holds `scripts/{discover,render,refresh}.sh` and `templates/` |
+| `plugins/conventions/rules/` | the rule templates (`CLAUDE.md`, `{workflow,architecture,coding,knowledge,pitfalls,commands}.md`) and `_project/{settings.json,conventions.json,gitignore}`; rendered by the port skill, sentinel sections refreshed by `--refresh` |
+| `plugins/conventions/skills/<name>/SKILL.md` | skills; `port-claude-config/` also holds `scripts/{discover,render,refresh}.sh` |
 | `plugins/conventions/agents/<name>.md` | agents |
 | `profiles/conventions.json` | ccprofile profile |
 | `schema/conventions.schema.json` | JSON Schema (draft 2020-12) of `.claude/conventions.json` |

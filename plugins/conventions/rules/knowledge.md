@@ -16,3 +16,13 @@
 - Do not record: linter/type errors, one-off typos, things the tests already
   explain.
 <!-- conventions:end knowledge.pitfalls -->
+
+<!-- conventions:begin knowledge.rules -->
+- **Where a new rule goes**: generic (holds for any app) → the matching file
+  here; app-specific → `.claude/rules/<app>/` (written by
+  `/conventions:app-rules`), one line per fact with its evidence path. A rule
+  already stated in the generic files is never repeated in an app file.
+- **A rule states a constraint, a boundary, a prerequisite or a trap** — never
+  what a reader sees in the code. A guide longer than three lines goes under
+  `docs/` and the rule links to it.
+<!-- conventions:end knowledge.rules -->

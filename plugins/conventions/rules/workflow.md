@@ -68,8 +68,9 @@
   (single-app repo: `.claude/rules/commands.md`), run in file order from the
   repo root. `/conventions:verify-app <app|all>` runs it — do this before
   claiming a task done.
-- Cross-cutting rules (dead code, ports/adapters, tests) live in
-  `architecture.md`; test gaps → `/conventions:test-gaps <app|all>`.
+- Cross-cutting rules: structure, boundaries and tests in `architecture.md`;
+  change discipline, style and dependencies in `coding.md`; test gaps →
+  `/conventions:test-gaps <app|all>`.
 - Long-term choices → `/conventions:adr`; recurring traps → `pitfalls.md`
   (see `knowledge.md`).
 <!-- conventions:end workflow.verification -->

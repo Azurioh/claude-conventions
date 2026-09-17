@@ -2,8 +2,8 @@
 # refresh.sh <target-root> — re-applies the template-owned sections of a
 # ported repository (contracts/templates.md, "Refresh").
 #
-# For every template that carries sentinel sections (CLAUDE.md, rules/*.md)
-# and whose target file exists in <target-root>:
+# For every template that carries sentinel sections (rules/CLAUDE.md and the
+# other rules/*.md of the plugin) and whose target file exists in <target-root>:
 #   1. the template's sentinel blocks are extracted and rendered with the
 #      target's .claude/conventions.json (render.sh) — only the placeholders
 #      inside the blocks need a value, so {{APP_TABLE}} and everything else
@@ -14,10 +14,12 @@
 #   3. a section present in the template but absent from the file is appended
 #      at the end, preceded by a one-line notice comment.
 # A target file without any sentinel is skipped, as are templates without
-# sentinels (commands.md, settings.json, conventions.json, gitignore) and the
-# per-app directories .claude/rules/<app>/. The paths of the files that changed
+# sentinels (commands.md, the _project/ files) and the per-app directories
+# .claude/rules/<app>/. Mapping: rules/CLAUDE.md → CLAUDE.md, every other
+# rules/<name>.md → .claude/rules/<name>.md. The paths of the files that changed
 # are printed on stdout, one per line; exit 0 also when nothing changed.
-# CONVENTIONS_TEMPLATES_DIR overrides the templates directory (tests).
+# CONVENTIONS_TEMPLATES_DIR overrides the templates directory, the plugin's
+# rules/ by default (tests).
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -26,7 +28,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATES="${CONVENTIONS_TEMPLATES_DIR:-$SCRIPT_DIR/../templates}"
+TEMPLATES="${CONVENTIONS_TEMPLATES_DIR:-$SCRIPT_DIR/../../../rules}"
 RENDER="$SCRIPT_DIR/render.sh"
 
 root="$1"
@@ -135,7 +137,10 @@ refresh_file() {
 
 CHANGED=0
 refresh_file "$TEMPLATES/CLAUDE.md" "CLAUDE.md"
-for template in "$TEMPLATES"/rules/*.md; do
+for template in "$TEMPLATES"/*.md; do
+  if [ "$(basename "$template")" = "CLAUDE.md" ]; then
+    continue
+  fi
   refresh_file "$template" ".claude/rules/$(basename "$template")"
 done
 

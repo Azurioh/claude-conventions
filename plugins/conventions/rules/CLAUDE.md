@@ -1,8 +1,9 @@
 <!-- conventions:begin claude.intro -->
 Claude Code conventions for this repository. The rules live in `.claude/rules/`
-(`workflow.md`, `architecture.md`, `knowledge.md` always apply; `pitfalls.md`
-collects recurring traps; a `commands.md` per app holds its CI sequence). Hooks,
-skills and agents come from the `conventions` plugin, not from this repo.
+(`workflow.md`, `architecture.md`, `coding.md`, `knowledge.md` always apply;
+`pitfalls.md` collects recurring traps; a `commands.md` per app holds its CI
+sequence). Hooks, skills and agents come from the `conventions` plugin, not
+from this repo.
 <!-- conventions:end claude.intro -->
 
 ## Stack

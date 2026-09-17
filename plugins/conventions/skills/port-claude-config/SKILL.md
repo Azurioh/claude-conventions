@@ -7,6 +7,7 @@ Never commit. Never write a file before the user has confirmed step 2. Every pat
 
 ```bash
 SKILL="${CLAUDE_PLUGIN_ROOT}/skills/port-claude-config"
+RULES="${CLAUDE_PLUGIN_ROOT}/rules"
 ```
 
 `$ARGUMENTS` contains `--refresh` → skip to **Refresh** at the end.
@@ -14,7 +15,7 @@ SKILL="${CLAUDE_PLUGIN_ROOT}/skills/port-claude-config"
 ## Step 1 — discover
 
 1. `"$SKILL/scripts/discover.sh" > /tmp/discover.json && cat /tmp/discover.json` — one JSON object: `packageManager`, `formatter`, `lockfiles`, `workspaces`, `apps` (guess: workspace members with a `package.json`, name = dir basename), `packageScripts` (per package dir), `defaultBranch`, `branches`, `ciParser` (`yq` / `awk` / `none`), `ciWorkflows[].jobs[].run[]` (every `run:` line per job, verbatim), `existingClaude` (`claudeMd`, `paths`, `hooks`), `hasGitignoreClaude`.
-2. Read the reference list: `ls "$SKILL/templates" "$SKILL/templates/rules"` — `CLAUDE.md`, `rules/{workflow,architecture,knowledge,pitfalls,commands}.md`, `settings.json`, `conventions.json`, `gitignore`. Read each template once so the mapping names real sections.
+2. Read the reference list: `ls "$RULES" "$RULES/_project"` — `CLAUDE.md`, `{workflow,architecture,coding,knowledge,pitfalls,commands}.md`, `_project/{settings.json,conventions.json,gitignore}`. Read each template once so the mapping names real sections.
 3. Read every existing file listed in `existingClaude.paths` and `CLAUDE.md` when present. A hook under `.claude/hooks/` whose name or behaviour matches a plugin hook (`guard-git`, `deps-exact`, `pr-size`, `format`, `branch-info`, or an older per-repo spelling of the same check — exact-pin guard, formatter-on-save, branch banner) is a duplicate.
 
 ## Step 2 — propose, then STOP
@@ -26,10 +27,10 @@ Print, in this order, and nothing else:
 
    | source | action | target |
    |---|---|---|
-   | `templates/CLAUDE.md` | keep / adapt / drop | `CLAUDE.md` |
-   | `templates/rules/workflow.md` | keep | `.claude/rules/workflow.md` |
+   | `rules/CLAUDE.md` | keep / adapt / drop | `CLAUDE.md` |
+   | `rules/workflow.md` | keep | `.claude/rules/workflow.md` |
    | … | | |
-   | `templates/rules/commands.md` | adapt (one per app) | `.claude/rules/<app>/commands.md` or `.claude/rules/commands.md` |
+   | `rules/commands.md` | adapt (one per app) | `.claude/rules/<app>/commands.md` or `.claude/rules/commands.md` |
    | `.claude/hooks/<x>.sh` (existing) | drop — duplicate of plugin hook `<y>` | — |
    | `CLAUDE.md` (existing) | merge / keep as is | `CLAUDE.md` |
 
@@ -54,7 +55,7 @@ Run the commands you will write **before** writing them. Every command that land
      --arg note "<deploy note or empty>" --argjson lines <lines> --argjson files <files> \
      '{integrationBranch:$int, productionBranch:$prod, packageManager:$pm, formatter:$fmt,
        prSize:{lines:$lines, files:$files}} + (if $note == "" then {} else {deployNote:$note} end)' > /tmp/answers.json
-   "$SKILL/scripts/render.sh" "$SKILL/templates/conventions.json" /tmp/answers.json \
+   "$SKILL/scripts/render.sh" "$RULES/_project/conventions.json" /tmp/answers.json \
      | jq --argjson apps '<{"name":"path",…} or {}>' --arg note "<deploy note or empty>" \
        '(if $apps == {} then del(.apps) else .apps = $apps end) | (if $note == "" then . else .deployNote = $note end)' \
      > .claude/conventions.json
@@ -63,8 +64,8 @@ Run the commands you will write **before** writing them. Every command that land
 2. **Rendered rules** — for each template kept or adapted:
    ```bash
    mkdir -p .claude/rules
-   for f in workflow architecture knowledge pitfalls; do
-     "$SKILL/scripts/render.sh" "$SKILL/templates/rules/$f.md" .claude/conventions.json > ".claude/rules/$f.md"
+   for f in workflow architecture coding knowledge pitfalls; do
+     "$SKILL/scripts/render.sh" "$RULES/$f.md" .claude/conventions.json > ".claude/rules/$f.md"
    done
    ```
    Then apply the `adapt` edits announced in step 2 outside the sentinel comments only (`<!-- conventions:begin … -->` / `<!-- conventions:end … -->` wrap the template-owned text that `--refresh` rewrites). Fill the **Test layout** table in `architecture.md` with the layers the repo actually has (rows = layer, source glob, test dir, test kind, relative to the app dir; keep `other`); it sits outside the sentinels and belongs to the project.
@@ -72,16 +73,16 @@ Run the commands you will write **before** writing them. Every command that land
    - multi-app: `| App | Path | Stack | Verify |` + `|---|---|---|---|` + one row per app, Verify = `` `.claude/rules/<app>/commands.md` ``;
    - single-app: one line instead of a table, e.g. `` Single app (<stack>). Verify: `.claude/rules/commands.md`. ``;
    ```bash
-   "$SKILL/scripts/render.sh" "$SKILL/templates/CLAUDE.md" .claude/conventions.json --app-table /tmp/app-table.md > CLAUDE.md
+   "$SKILL/scripts/render.sh" "$RULES/CLAUDE.md" .claude/conventions.json --app-table /tmp/app-table.md > CLAUDE.md
    ```
    Existing `CLAUDE.md` with `merge` chosen: keep the existing text, append the template's sentinel sections that are missing. Keep the file ≤ 40 lines.
-4. **Command sheets** — one `.claude/rules/<app>/commands.md` per app (single-app: `.claude/rules/commands.md`, without the `paths:` frontmatter), following `templates/rules/commands.md`: the sequence line lists the commands in CI order, joined by `&&`, from the repo root; a command that needs an environment variable is marked `(needs <VAR>)` and excluded from the `&&` line. Replace every `<app>`, `<app-path>`, `<command …>`, `<VAR>` slot; delete the bullets that do not apply. Source of each command, in preference order: the CI job's `run:` lines for that app; else the app's `packageScripts` invoked the repo way (`<pm> --filter <name> <script>`, `<pm> run <script>`, …) and run once. Run the finished sequence once from the repo root and record the output.
+4. **Command sheets** — one `.claude/rules/<app>/commands.md` per app (single-app: `.claude/rules/commands.md`, without the `paths:` frontmatter), following `$RULES/commands.md`: the sequence line lists the commands in CI order, joined by `&&`, from the repo root; a command that needs an environment variable is marked `(needs <VAR>)` and excluded from the `&&` line. Replace every `<app>`, `<app-path>`, `<command …>`, `<VAR>` slot; delete the bullets that do not apply. Source of each command, in preference order: the CI job's `run:` lines for that app; else the app's `packageScripts` invoked the repo way (`<pm> --filter <name> <script>`, `<pm> run <script>`, …) and run once. Run the finished sequence once from the repo root and record the output.
 5. **`.claude/settings.json`** — `/tmp/permissions.json` = a JSON array of `Bash(<prefix>*)` entries, one per command family actually run or quoted in this session (e.g. `Bash(<pm> lint*)`, `Bash(<pm> test*)`, `Bash(<pm> --filter *)`), plus the read-only git/gh set `Bash(git status*)`, `Bash(git diff*)`, `Bash(git log*)`, `Bash(git branch*)`, `Bash(gh pr view*)`, `Bash(gh pr checks*)`, `Bash(gh run view*)`, `Bash(gh run list*)`. Then:
    ```bash
-   "$SKILL/scripts/render.sh" "$SKILL/templates/settings.json" .claude/conventions.json --permissions /tmp/permissions.json | jq . > .claude/settings.json
+   "$SKILL/scripts/render.sh" "$RULES/_project/settings.json" .claude/conventions.json --permissions /tmp/permissions.json | jq . > .claude/settings.json
    ```
    No `hooks` key — hooks come from the plugin. An existing `settings.json`: merge `permissions.allow` / `permissions.deny` (union) and add `enabledPlugins: {}` only when absent; remove a `hooks` entry only when step 2 marked it as a duplicate and the user agreed.
-6. **`.gitignore`** — `.claude/` committed: append `"$SKILL/templates/gitignore"` unless `hasGitignoreClaude` is true, in which case show the existing `.claude` lines and add only the missing negations. Not committed: append a single `.claude/` line instead.
+6. **`.gitignore`** — `.claude/` committed: append `"$RULES/_project/gitignore"` unless `hasGitignoreClaude` is true, in which case show the existing `.claude` lines and add only the missing negations. Not committed: append a single `.claude/` line instead.
 7. Final check, then report:
    ```bash
    grep -rn '{{[A-Z_]*}}\|TODO' CLAUDE.md .claude/rules .claude/settings.json .claude/conventions.json
@@ -100,6 +101,6 @@ No discovery, no questions, no other write. Run, then show the result:
 git diff --stat
 ```
 
-`refresh.sh` re-renders, from the current `.claude/conventions.json`, the sentinel sections of every template that has some (`CLAUDE.md`, `rules/workflow.md`, `rules/architecture.md`, `rules/knowledge.md`, `rules/pitfalls.md`) and, for each target file that exists and carries sentinels, replaces the body of each matching `<!-- conventions:begin <id> -->` … `<!-- conventions:end <id> -->` pair; every byte outside the pairs stays as it is. A section present in the template but missing from the file is appended at the end after a one-line `<!-- conventions:refresh — … -->` notice — tell the user to move it where it belongs. Never touched: files without any sentinel (a kept-as-is `CLAUDE.md`), `.claude/conventions.json`, `.claude/settings.json`, `.gitignore`, every `commands.md`, `.claude/rules/<app>/`, the `pitfalls.md` entries and the **Test layout** table. The script prints the changed files (one per line, `refresh: nothing to change` on stderr when none) and exits 0; it exits 1 without writing when `.claude/conventions.json` is missing or lacks a value a section needs (the placeholder is named — add the key and re-run) or when a section in a target file has no end marker (fix the file by hand first).
+`refresh.sh` re-renders, from the current `.claude/conventions.json`, the sentinel sections of every template that has some (`$RULES/CLAUDE.md` → `CLAUDE.md`; `$RULES/{workflow,architecture,coding,knowledge,pitfalls}.md` → `.claude/rules/<name>.md`) and, for each target file that exists and carries sentinels, replaces the body of each matching `<!-- conventions:begin <id> -->` … `<!-- conventions:end <id> -->` pair; every byte outside the pairs stays as it is. A section present in the template but missing from the file is appended at the end after a one-line `<!-- conventions:refresh — … -->` notice — tell the user to move it where it belongs. Never touched: files without any sentinel (a kept-as-is `CLAUDE.md`), `.claude/conventions.json`, `.claude/settings.json`, `.gitignore`, every `commands.md`, `.claude/rules/<app>/`, the `pitfalls.md` entries and the **Test layout** table. The script prints the changed files (one per line, `refresh: nothing to change` on stderr when none) and exits 0; it exits 1 without writing when `.claude/conventions.json` is missing or lacks a value a section needs (the placeholder is named — add the key and re-run) or when a section in a target file has no end marker (fix the file by hand first).
 
 Report: the `git diff --stat` output, the appended sections if any, and the reminder `not committed — review with git diff, then commit yourself`.

@@ -539,15 +539,15 @@ render_fails() {
 
 section "port/render"
 mkfixture pnpm-biome
-TPL="$PORT_DIR/templates"
+TPL="$ROOT/plugins/conventions/rules"
 FULL_CONV="$TMP/conventions-full.json"
 jq '. + {packageManager: "pnpm", formatter: "biome"}' "$FIXTURE/.claude/conventions.json" >"$FULL_CONV"
 printf '| App | Path | Stack | Verify |\n|---|---|---|---|\n| api | %sapps/api%s | node | %s.claude/rules/api/commands.md%s |\n' '`' '`' '`' '`' >"$TMP/app-table.md"
 printf '["Bash(pnpm lint*)", "Bash(git status*)"]\n' >"$TMP/permissions.json"
 
-render_fails "render: fixture conventions lack packageManager → exit 1" '{{PKG_MANAGER}}' "$TPL/rules/workflow.md" "$FIXTURE/.claude/conventions.json"
+render_fails "render: fixture conventions lack packageManager → exit 1" '{{PKG_MANAGER}}' "$TPL/workflow.md" "$FIXTURE/.claude/conventions.json"
 render_fails "render: CLAUDE.md without --app-table → exit 1" '{{APP_TABLE}}' "$TPL/CLAUDE.md" "$FULL_CONV"
-render_fails "render: settings.json without --permissions → exit 1" '{{PERMISSIONS}}' "$TPL/settings.json" "$FULL_CONV"
+render_fails "render: settings.json without --permissions → exit 1" '{{PERMISSIONS}}' "$TPL/_project/settings.json" "$FULL_CONV"
 printf 'x {{NOT_A_PLACEHOLDER}} y\n' >"$TMP/bogus.md"
 render_fails "render: unknown placeholder → exit 1" '{{NOT_A_PLACEHOLDER}}' "$TMP/bogus.md" "$FULL_CONV"
 
@@ -556,43 +556,51 @@ check "render: CLAUDE.md carries the app table" stdout_has "| api | \`apps/api\`
 check "render: CLAUDE.md names the integration branch" stdout_has "Every PR targets \`develop\`"
 check "render: CLAUDE.md empty deploy note" stdout_has "is **production**. \`develop\`"
 check "render: CLAUDE.md ≤ 40 lines" test "$(wc -l <"$LAST_STDOUT")" -le 40
-for tpl in workflow architecture knowledge pitfalls commands; do
-  render_ok "render: rules/$tpl.md" "$TPL/rules/$tpl.md" "$FULL_CONV"
+for tpl in workflow architecture coding knowledge pitfalls commands; do
+  render_ok "render: rules $tpl.md" "$TPL/$tpl.md" "$FULL_CONV"
 done
-render_ok "render: rules/workflow.md exact flag" "$TPL/rules/workflow.md" "$FULL_CONV"
+render_ok "render: workflow.md exact flag" "$TPL/workflow.md" "$FULL_CONV"
 check "render: workflow.md uses pnpm add -E" stdout_has 'pnpm add -E <pkg>'
 check "render: workflow.md size cap defaults" stdout_has '≤ 400 changed lines'
-render_ok "render: rules/architecture.md" "$TPL/rules/architecture.md" "$FULL_CONV"
+render_ok "render: architecture.md" "$TPL/architecture.md" "$FULL_CONV"
 check "render: architecture.md has the Test layout table" stdout_has '| layer | source glob | test dir | test kind |'
 check "render: architecture.md has sentinels" stdout_has '<!-- conventions:begin architecture.ports -->'
-render_ok "render: rules/knowledge.md" "$TPL/rules/knowledge.md" "$FULL_CONV"
+check "render: architecture.md has the structure and boundaries sections" \
+  test "$(grep -cE '^<!-- conventions:begin architecture\.(structure|boundaries) -->$' "$LAST_STDOUT")" = 2
+render_ok "render: coding.md" "$TPL/coding.md" "$FULL_CONV"
+check "render: coding.md has its three sections" \
+  test "$(grep -cE '^<!-- conventions:begin coding\.(changes|style|dependencies) -->$' "$LAST_STDOUT")" = 3
+check "render: coding.md forbids the inner break" stdout_has 'with an inner'
+check "render: coding.md ≤ 60 lines" test "$(wc -l <"$LAST_STDOUT")" -le 60
+render_ok "render: knowledge.md" "$TPL/knowledge.md" "$FULL_CONV"
 check "render: knowledge.md default ADR dir" stdout_has 'docs/adr/NNNN-<slug>.md'
-render_ok "render: gitignore" "$TPL/gitignore" "$FULL_CONV"
+render_ok "render: gitignore" "$TPL/_project/gitignore" "$FULL_CONV"
 check "render: gitignore negates rules/" stdout_has '!.claude/rules/'
-render_ok "render: settings.json" "$TPL/settings.json" "$FULL_CONV" --permissions "$TMP/permissions.json"
+render_ok "render: settings.json" "$TPL/_project/settings.json" "$FULL_CONV" --permissions "$TMP/permissions.json"
 check "render: settings.json is JSON with empty enabledPlugins and force-push denied" \
   jq -e '.enabledPlugins == {} and (.permissions.deny | index("Bash(git push --force*)")) != null and (.permissions.allow | index("Bash(pnpm lint*)")) != null and (has("hooks") | not)' "$LAST_STDOUT" >/dev/null
-render_ok "render: conventions.json" "$TPL/conventions.json" "$FULL_CONV"
+render_ok "render: conventions.json" "$TPL/_project/conventions.json" "$FULL_CONV"
 # shellcheck disable=SC2016  # "$schema" is a jq key, not a shell variable
 check "render: conventions.json is JSON with the schema and defaults" \
   jq -e '(.["$schema"] | endswith("schema/conventions.schema.json")) and .integrationBranch == "develop" and .prSize.lines == 400 and .prSize.label == "large-pr" and .adrDir == "docs/adr"' "$LAST_STDOUT" >/dev/null
 
 NPM_CONV="$TMP/conventions-npm.json"
 jq -n '{integrationBranch: "develop", packageManager: "npm", deployNote: "deployed on merge", prSize: {lines: 300, files: 10, label: "big"}, adrDir: "doc/decisions"}' >"$NPM_CONV"
-render_ok "render: npm + deploy note + overrides" "$TPL/rules/workflow.md" "$NPM_CONV"
+render_ok "render: npm + deploy note + overrides" "$TPL/workflow.md" "$NPM_CONV"
 check "render: npm exact flag" stdout_has 'npm add --save-exact <pkg>'
 check "render: production defaults to main with the deploy note" stdout_has "\`main\` = production (deployed on merge)"
 check "render: size cap overrides" stdout_has '≤ 300 changed lines'
 check "render: label override" stdout_has '--label big'
-render_ok "render: knowledge.md adrDir override" "$TPL/rules/knowledge.md" "$NPM_CONV"
+render_ok "render: knowledge.md adrDir override" "$TPL/knowledge.md" "$NPM_CONV"
 check "render: adrDir override" stdout_has 'doc/decisions/NNNN-<slug>.md'
-check "render: missing conventions file → exit 1" test "$("$PORT_DIR/scripts/render.sh" "$TPL/gitignore" "$TMP/does-not-exist.json" >/dev/null 2>&1; echo $?)" = 1
+check "render: missing conventions file → exit 1" test "$("$PORT_DIR/scripts/render.sh" "$TPL/_project/gitignore" "$TMP/does-not-exist.json" >/dev/null 2>&1; echo $?)" = 1
 
 # --- port/refresh ------------------------------------------------------------
 # port_fixture — renders the sentinel-bearing templates into the current
 # fixture the way the port skill does (CLAUDE.md with an app table,
-# rules/{workflow,architecture,knowledge,pitfalls}.md, one commands.md for the
-# api app) from a conventions.json holding every value the templates need.
+# rules/{workflow,architecture,coding,knowledge,pitfalls}.md, one commands.md
+# for the api app) from a conventions.json holding every value the templates
+# need.
 port_fixture() {
   local f
   jq '. + {packageManager: "pnpm", formatter: "biome", deployNote: "deployed on merge"}' \
@@ -600,8 +608,8 @@ port_fixture() {
   cp "$TMP/conventions-ported.json" "$FIXTURE/.claude/conventions.json"
   mkdir -p "$FIXTURE/.claude/rules/api"
   "$PORT_DIR/scripts/render.sh" "$TPL/CLAUDE.md" "$FIXTURE/.claude/conventions.json" --app-table "$TMP/app-table.md" >"$FIXTURE/CLAUDE.md"
-  for f in workflow architecture knowledge pitfalls; do
-    "$PORT_DIR/scripts/render.sh" "$TPL/rules/$f.md" "$FIXTURE/.claude/conventions.json" >"$FIXTURE/.claude/rules/$f.md"
+  for f in workflow architecture coding knowledge pitfalls; do
+    "$PORT_DIR/scripts/render.sh" "$TPL/$f.md" "$FIXTURE/.claude/conventions.json" >"$FIXTURE/.claude/rules/$f.md"
   done
   printf -- '---\npaths:\n  - "apps/api/**"\n---\n\n# api — commands\n\n    pnpm -C apps/api lint && pnpm -C apps/api test\n' >"$FIXTURE/.claude/rules/api/commands.md"
 }
@@ -689,14 +697,18 @@ check "refresh: unchanged templates → workflow.md byte-identical" cmp -s "$SNA
 # removed from the fixture's knowledge.md to exercise the append path.
 EDITED_TPL="$TMP/templates-edited"
 cp -R "$TPL" "$EDITED_TPL"
-rewrite "$EDITED_TPL/rules/workflow.md" sed "s#^- \*\*Never commit without the user's OK.\*\*\$#- **Never commit without the user's explicit OK (refreshed line).**#"
-check "refresh: edited template carries the new line" grep -qF 'refreshed line' "$EDITED_TPL/rules/workflow.md"
+rewrite "$EDITED_TPL/workflow.md" sed "s#^- \*\*Never commit without the user's OK.\*\*\$#- **Never commit without the user's explicit OK (refreshed line).**#"
+check "refresh: edited template carries the new line" grep -qF 'refreshed line' "$EDITED_TPL/workflow.md"
 rewrite "$FIXTURE/.claude/rules/knowledge.md" drop_section knowledge.pitfalls
 cp "$FIXTURE/.claude/rules/knowledge.md" "$SNAP/.claude/rules/knowledge.md"
+rewrite "$EDITED_TPL/coding.md" sed 's#^  visible in the header — no #  visible in the header (refreshed line) — no #'
+check "refresh: edited coding.md template carries the new line" grep -qF 'header (refreshed line)' "$EDITED_TPL/coding.md"
+rewrite "$FIXTURE/.claude/rules/coding.md" drop_section coding.dependencies
+cp "$FIXTURE/.claude/rules/coding.md" "$SNAP/.claude/rules/coding.md"
 
 refresh_run "refresh: edited template → exit 0" 0 "$EDITED_TPL"
-check "refresh: changed-file list is exactly knowledge.md and workflow.md" \
-  test "$(sort "$LAST_STDOUT" | tr '\n' ' ')" = ".claude/rules/knowledge.md .claude/rules/workflow.md "
+check "refresh: changed-file list is exactly coding.md, knowledge.md and workflow.md" \
+  test "$(sort "$LAST_STDOUT" | tr '\n' ' ')" = ".claude/rules/coding.md .claude/rules/knowledge.md .claude/rules/workflow.md "
 check "refresh: changed line landed inside workflow.commits" grep -qF 'explicit OK (refreshed line)' "$FIXTURE/.claude/rules/workflow.md"
 check "refresh: old line gone from workflow.md" test "$(grep -cF "Never commit without the user's OK." "$FIXTURE/.claude/rules/workflow.md")" = 0
 check "refresh: workflow.md outside sentinels byte-identical" same_outside "$SNAP/.claude/rules/workflow.md" "$FIXTURE/.claude/rules/workflow.md"
@@ -709,12 +721,18 @@ check "refresh: knowledge.md keeps its former content first" starts_with "$SNAP/
 check "refresh: missing section appended with a notice" grep -qF '<!-- conventions:refresh — section knowledge.pitfalls was missing' "$FIXTURE/.claude/rules/knowledge.md"
 check "refresh: appended section carries its sentinels and body" \
   test "$(grep -cF -e '<!-- conventions:begin knowledge.pitfalls -->' -e '<!-- conventions:end knowledge.pitfalls -->' -e 'under 40 lines' "$FIXTURE/.claude/rules/knowledge.md")" = 3
+check "refresh: changed line landed inside coding.style" grep -qF 'header (refreshed line)' "$FIXTURE/.claude/rules/coding.md"
+check "refresh: old line gone from coding.md" test "$(grep -cF 'visible in the header — no' "$FIXTURE/.claude/rules/coding.md")" = 0
+check "refresh: missing coding.dependencies appended with a notice" grep -qF '<!-- conventions:refresh — section coding.dependencies was missing' "$FIXTURE/.claude/rules/coding.md"
+check "refresh: appended coding.dependencies carries its sentinels and body" \
+  test "$(grep -cF -e '<!-- conventions:begin coding.dependencies -->' -e '<!-- conventions:end coding.dependencies -->' -e 'Workspace packages are built before' "$FIXTURE/.claude/rules/coding.md")" = 3
 
 cp -R "$FIXTURE/.claude" "$TMP/refresh-after-claude"
 refresh_run "refresh: second run → exit 0" 0 "$EDITED_TPL"
 check "refresh: second run → no changed file" test ! -s "$LAST_STDOUT"
 check "refresh: second run → workflow.md stable" cmp -s "$TMP/refresh-after-claude/rules/workflow.md" "$FIXTURE/.claude/rules/workflow.md"
 check "refresh: second run → knowledge.md stable" cmp -s "$TMP/refresh-after-claude/rules/knowledge.md" "$FIXTURE/.claude/rules/knowledge.md"
+check "refresh: second run → coding.md stable" cmp -s "$TMP/refresh-after-claude/rules/coding.md" "$FIXTURE/.claude/rules/coding.md"
 
 # Files without sentinels are skipped; a section without its end marker is
 # refused; a repo without conventions.json is refused.
