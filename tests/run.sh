@@ -151,6 +151,16 @@ stdout_lacks() {
   ! grep -qF -- "$1" "$LAST_STDOUT"
 }
 
+# agents_md_generated_file <file> — true when <file> carries the GENERATED
+# header of agents-md.sh (lib.sh#agents_md_generated).
+agents_md_generated_file() {
+  (
+    # shellcheck source=../plugins/conventions/hooks/lib.sh
+    source "$HOOKS_DIR/lib.sh"
+    agents_md_generated "$1"
+  )
+}
+
 # files_differ <a> <b> — true when the two files have different content.
 files_differ() {
   ! cmp -s "$1" "$2"
@@ -749,6 +759,140 @@ mkdir -p "$TMP/no-conventions-root"
 FIXTURE="$TMP/no-conventions-root"
 refresh_run "refresh: no conventions.json → exit 1" 1
 check "refresh: missing conventions.json named on stderr" grep -qF '.claude/conventions.json missing' "$LAST_STDERR"
+
+# --- agents-md ----------------------------------------------------------------
+AGENTS_MD="$ROOT/plugins/conventions/scripts/agents-md.sh"
+GOLDEN="$ROOT/tests/golden/AGENTS.md"
+
+# agents_md_run <label> <expected-exit> [stderr-substring] [args…] — runs
+# agents-md.sh --repo <current fixture> with the extra args and asserts the
+# exit code and, when non-empty, the stderr substring. Output kept in
+# LAST_STDOUT / LAST_STDERR.
+agents_md_run() {
+  local label="$1" want="$2" needle="${3:-}" got=0
+  shift 3
+  "$AGENTS_MD" --repo "$FIXTURE" "$@" >"$LAST_STDOUT" 2>"$LAST_STDERR" || got=$?
+  if [ "$got" -ne "$want" ]; then
+    fail "$label" "agents-md.sh exit=$got (want $want)" "stderr=$(cat "$LAST_STDERR")"
+    return 0
+  fi
+  if [ -n "$needle" ] && ! grep -qF -- "$needle" "$LAST_STDERR"; then
+    fail "$label" "stderr lacks '$needle'" "stderr=$(cat "$LAST_STDERR")"
+    return 0
+  fi
+  pass "$label"
+}
+
+# managed_block <id> <text> — prints one OpenRig managed block.
+managed_block() {
+  printf '<!-- BEGIN OpenRig MANAGED BLOCK: %s -->\n%s\n<!-- END OpenRig MANAGED BLOCK: %s -->\n' "$1" "$2" "$1"
+}
+
+if [[ "$(yq --version 2>/dev/null || true)" == *mikefarah* ]]; then
+  section "agents-md (generator)"
+  mkfixture agents-md
+  agents_md_run "agents-md: generate → exit 0" 0 ""
+  check "agents-md: stdout names the written file" stdout_has "AGENTS.md"
+  check "agents-md: output matches the golden file" cmp -s "$GOLDEN" "$FIXTURE/AGENTS.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-first.md"
+  agents_md_run "agents-md: second run → exit 0" 0 ""
+  check "agents-md: second run → byte-identical" cmp -s "$TMP/agents-first.md" "$FIXTURE/AGENTS.md"
+  check "agents-md: second run → nothing written" test ! -s "$LAST_STDOUT"
+  find "$FIXTURE/AGENTS.md" -delete
+  (cd "$FIXTURE/.claude/rules/api" && "$AGENTS_MD" >/dev/null)
+  check "agents-md: default repo = git toplevel of the cwd" cmp -s "$GOLDEN" "$FIXTURE/AGENTS.md"
+  check "agents-md: always-on frontmatter stripped" test "$(grep -c '^description:' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: imported rule not repeated" test "$(grep -c '^## .claude/rules/workflow.md$' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: non-rule import becomes a pointer" grep -qxF "read \`docs/guide.md\`" "$FIXTURE/AGENTS.md"
+
+  agents_md_run "agents-md: --check up to date → exit 0" 0 "" --check
+  printf -- '- New workflow line.\n' >>"$FIXTURE/.claude/rules/workflow.md"
+  agents_md_run "agents-md: --check after a rule edit → exit 1" 1 "AGENTS.md is out of date" --check
+  check "agents-md: --check message is one line" test "$(wc -l <"$LAST_STDERR")" -eq 1
+  check "agents-md: --check never writes" cmp -s "$TMP/agents-first.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: regenerate after the edit" 0 ""
+  check "agents-md: edit landed" grep -qxF -- '- New workflow line.' "$FIXTURE/AGENTS.md"
+
+  # Managed blocks: one inserted in the middle, one at the end. --check ignores
+  # them; a regeneration keeps both verbatim, at the end, in original order.
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-clean.md"
+  {
+    head -n 1 "$TMP/agents-clean.md"
+    managed_block skills 'OpenRig skills: use the rig.'
+    tail -n +2 "$TMP/agents-clean.md"
+    printf '\n'
+    managed_block seat 'Seat: codex-1'
+  } >"$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check ignores managed blocks → exit 0" 0 "" --check
+  agents_md_run "agents-md: regenerate with managed blocks" 0 ""
+  {
+    cat "$TMP/agents-clean.md"
+    printf '\n'
+    managed_block skills 'OpenRig skills: use the rig.'
+    printf '\n'
+    managed_block seat 'Seat: codex-1'
+  } >"$TMP/agents-blocks.md"
+  check "agents-md: managed blocks kept verbatim at the end, in order" cmp -s "$TMP/agents-blocks.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: regenerate with managed blocks again" 0 ""
+  check "agents-md: managed blocks stable across runs" cmp -s "$TMP/agents-blocks.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check with blocks at the end → exit 0" 0 "" --check
+
+  find "$FIXTURE/AGENTS.md" -delete
+  agents_md_run "agents-md: --check without AGENTS.md → exit 1" 1 "AGENTS.md missing" --check
+  check "agents-md: --check creates nothing" test ! -e "$FIXTURE/AGENTS.md"
+
+  printf '# Hand-written\n\nProject notes for Codex.\n' >"$FIXTURE/AGENTS.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-hand.md"
+  agents_md_run "agents-md: hand-written AGENTS.md refused → exit 2" 2 "move its content into CLAUDE.md or .claude/rules/"
+  check "agents-md: hand-written AGENTS.md untouched" cmp -s "$TMP/agents-hand.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check on hand-written → exit 1" 1 "hand-written" --check
+  agents_md_run "agents-md: --force overwrites hand-written" 0 "" --force
+  check "agents-md: --force output carries the header" agents_md_generated_file "$FIXTURE/AGENTS.md"
+
+  # Oversize: one 40 000-byte always-on rule pushes the file past 32 KiB.
+  mkfixture agents-md
+  awk 'BEGIN { for (i = 0; i < 500; i++) { printf "- filler rule line %04d that only exists to exceed the cap........\n", i } }' \
+    >"$FIXTURE/.claude/rules/big.md"
+  agents_md_run "agents-md: oversize → exit 0 with a size warning" 0 "bytes (> 32768"
+  check "agents-md: oversize → pointer mode" grep -qF 'Read these files before any change' "$FIXTURE/AGENTS.md"
+  check "agents-md: oversize → big rule listed as a pointer" grep -qxF -- "- \`.claude/rules/big.md\`" "$FIXTURE/AGENTS.md"
+  check "agents-md: oversize → big rule not inlined" test "$(grep -c 'filler rule line' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: oversize → file under the cap" test "$(wc -c <"$FIXTURE/AGENTS.md")" -le 32768
+  check "agents-md: oversize → scoped table kept" grep -qF "| \`apps/web/**\` | \`.claude/rules/web/commands.md\` |" "$FIXTURE/AGENTS.md"
+
+  printf -- '---\npaths: [\n---\nbroken\n' >"$FIXTURE/.claude/rules/broken.md"
+  agents_md_run "agents-md: invalid frontmatter → exit 1 naming the file" 1 "invalid frontmatter in .claude/rules/broken.md"
+
+  section "agents-md (hook)"
+  mkfixture agents-md
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: no AGENTS.md → none created" test ! -e "$FIXTURE/AGENTS.md"
+  "$AGENTS_MD" --repo "$FIXTURE" >/dev/null
+  printf -- '- Hook-added line.\n' >>"$FIXTURE/.claude/rules/workflow.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-hook-before.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/docs/guide.md")"
+  check "agents-md hook: unrelated file → AGENTS.md untouched" cmp -s "$TMP/agents-hook-before.md" "$FIXTURE/AGENTS.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: rule edit → regenerated" grep -qxF -- '- Hook-added line.' "$FIXTURE/AGENTS.md"
+  check "agents-md hook: silent on success" test ! -s "$LAST_STDERR"
+  printf '\nCLAUDE.md hook line.\n' >>"$FIXTURE/CLAUDE.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/CLAUDE.md")"
+  check "agents-md hook: CLAUDE.md edit → regenerated" grep -qxF 'CLAUDE.md hook line.' "$FIXTURE/AGENTS.md"
+  printf '# Hand-written\n' >"$FIXTURE/AGENTS.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: hand-written AGENTS.md untouched" test "$(cat "$FIXTURE/AGENTS.md")" = '# Hand-written'
+  expect 0 agents-md '{"hook_event_name":"PostToolUse","tool_name":"Edit","cwd":"'"$FIXTURE"'","tool_input":{}}'
+else
+  skip "agents-md" "yq (mikefarah v4) not installed"
+fi
+
+section "port/discover (agentsMd)"
+mkfixture agents-md
+discover_json "discover: agentsMd absent" '.agentsMd == "absent"'
+printf '# Hand-written\n' >"$FIXTURE/AGENTS.md"
+discover_json "discover: agentsMd hand-written" '.agentsMd == "hand-written"'
+cp "$GOLDEN" "$FIXTURE/AGENTS.md"
+discover_json "discover: agentsMd generated" '.agentsMd == "generated"'
 
 # ---------------------------------------------------------------------------
 # Summary
