@@ -17,10 +17,27 @@ under [`plugins/conventions/rules/`](plugins/conventions/rules/) (see Rules).
 
 ## Install
 
-Once per machine. Prerequisites: Claude Code CLI, `jq`, `git`, `gh`, `yq`
-(mikefarah v4, for the `AGENTS.md` generator), and the
-personal `ccprofile` script at `~/.claude/bin/ccprofile` (per-project
-plugin/skill profiles; optional, see below) for the per-project step.
+Once per machine. Works on macOS (stock bash 3.2 is enough) and Linux.
+Prerequisites: Claude Code CLI, `bash`, `jq`, `git`, `gh`, `yq` (mikefarah v4,
+for the `AGENTS.md` generator), and the personal `ccprofile` script at
+`~/.claude/bin/ccprofile` (per-project plugin/skill profiles; optional, see
+below) for the per-project step.
+
+| Platform | Install |
+|---|---|
+| macOS / Linuxbrew | `brew install jq git gh yq` |
+| Debian / Ubuntu | `sudo apt-get install jq git gh`, plus the yq release binary below (apt's `yq` is the incompatible Python wrapper) |
+| Fedora | `sudo dnf install jq git gh diffutils`, plus the yq release binary below |
+| Arch | `sudo pacman -S jq git github-cli diffutils go-yq` (`go-yq` is mikefarah; `yq` is the Python wrapper) |
+
+yq release binary (`amd64` or `arm64`, per `uname -m`):
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSL -o ~/.local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+chmod +x ~/.local/bin/yq
+yq --version   # must mention mikefarah
+```
 
 ```bash
 claude plugin marketplace add Azurioh/claude-conventions
@@ -217,7 +234,9 @@ claude plugin validate .                      # marketplace manifest
 ```
 
 CI (`.github/workflows/ci.yml`) runs shellcheck and `tests/run.sh` on Ubuntu with
-`jq` and the runner image's preinstalled `yq` — no Node, no Claude CLI.
+`jq` and the mikefarah `yq` release binary — no Node, no Claude CLI. CI sets
+`REQUIRE_YQ=1`, which turns the yq-dependent tests from SKIP into FAIL when `yq`
+(mikefarah v4) is missing.
 
 Layout:
 
@@ -232,7 +251,7 @@ Layout:
 | `plugins/conventions/agents/<name>.md` | agents |
 | `profiles/conventions.json` | ccprofile profile |
 | `schema/conventions.schema.json` | JSON Schema (draft 2020-12) of `.claude/conventions.json` |
-| `tests/run.sh` | copies each fixture to a temp dir, `git init`s it, feeds hand-built hook events, asserts exit code, stderr, stdout and file contents; also covers `discover.sh`, `render.sh`, `refresh.sh`, `agents-md.sh` (skipped without `yq`) |
+| `tests/run.sh` | copies each fixture to a temp dir, `git init`s it, feeds hand-built hook events, asserts exit code, stderr, stdout and file contents; also covers `discover.sh`, `render.sh`, `refresh.sh`, `agents-md.sh` (skipped without mikefarah `yq`, failed instead under `REQUIRE_YQ=1`) |
 | `tests/fixtures/pnpm-biome` | `pnpm-lock.yaml`, `biome.json`, `apps/api` workspace, conventions with `apps` |
 | `tests/fixtures/npm-prettier` | `package-lock.json`, `.prettierrc`, conventions with `integrationBranch` only |
 | `tests/fixtures/no-conventions` | `pnpm-lock.yaml` only, no `.claude/` |

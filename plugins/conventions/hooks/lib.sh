@@ -335,6 +335,36 @@ production_branch() {
 }
 
 # ---------------------------------------------------------------------------
+# yq
+# ---------------------------------------------------------------------------
+
+# has_mikefarah_yq — succeeds when the yq on PATH is mikefarah yq. The yq of
+# apt (and pacman's "yq") is the Python jq wrapper, whose flags are incompatible.
+has_mikefarah_yq() {
+  command -v yq >/dev/null 2>&1 && [[ "$(yq --version 2>/dev/null || true)" == *mikefarah* ]]
+}
+
+# yq_install_hint — prints how to install mikefarah yq on this machine: brew
+# (macOS or Linuxbrew), pacman's go-yq, else the static release binary.
+yq_install_hint() {
+  local arch
+  if command -v brew >/dev/null 2>&1; then
+    printf 'brew install yq'
+    return 0
+  fi
+  if command -v pacman >/dev/null 2>&1; then
+    printf 'sudo pacman -S go-yq'
+    return 0
+  fi
+  case "$(uname -m)" in
+    aarch64 | arm64) arch=arm64 ;;
+    *) arch=amd64 ;;
+  esac
+  printf 'mkdir -p ~/.local/bin && curl -fsSL -o ~/.local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_%s_%s && chmod +x ~/.local/bin/yq (apt/dnf "yq" may be the incompatible Python wrapper)' \
+    "$(uname -s | tr '[:upper:]' '[:lower:]')" "$arch"
+}
+
+# ---------------------------------------------------------------------------
 # AGENTS.md
 # ---------------------------------------------------------------------------
 

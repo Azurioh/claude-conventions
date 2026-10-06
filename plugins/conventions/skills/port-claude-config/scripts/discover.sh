@@ -36,10 +36,10 @@ if [ -z "$pm" ] && [ -f "$root/package.json" ]; then
 fi
 formatter="$(detect_formatter "$root")"
 
-# YAML parser for pnpm-workspace.yaml and the CI workflows: yq when available
-# (and not disabled), else the line-oriented awk fallbacks below.
+# YAML parser for pnpm-workspace.yaml and the CI workflows: mikefarah yq when
+# available (and not disabled), else the line-oriented awk fallbacks below.
 ci_parser="none"
-if [ "${DISCOVER_YQ:-1}" != "0" ] && command -v yq >/dev/null 2>&1; then
+if [ "${DISCOVER_YQ:-1}" != "0" ] && has_mikefarah_yq; then
   ci_parser="yq"
 fi
 

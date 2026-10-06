@@ -136,6 +136,25 @@ skip() {
   printf 'SKIP %s (%s)\n' "$1" "$2"
 }
 
+# yq_available — true when mikefarah yq is on PATH (lib.sh#has_mikefarah_yq).
+yq_available() {
+  (
+    # shellcheck source=../plugins/conventions/hooks/lib.sh
+    source "$HOOKS_DIR/lib.sh"
+    has_mikefarah_yq
+  )
+}
+
+# yq_missing <label> — records the yq-dependent tests <label> as skipped, or as
+# failed when REQUIRE_YQ=1 (set by CI so a missing yq cannot pass silently).
+yq_missing() {
+  if [ "${REQUIRE_YQ:-0}" = "1" ]; then
+    fail "$1" "yq (mikefarah v4) not installed and REQUIRE_YQ=1"
+  else
+    skip "$1" "yq (mikefarah v4) not installed"
+  fi
+}
+
 # has_formatter <name> <root> — true when <name> is resolvable the way
 # format.sh resolves it: <root>/node_modules/.bin/<name> or on PATH.
 has_formatter() {
@@ -474,10 +493,10 @@ discover_json "discover: no workflow → empty list" '.ciWorkflows == []'
 write_workflow
 printf '.claude/*\n!.claude/rules/\n' >"$FIXTURE/.gitignore"
 WORKFLOW_FILTER='.ciWorkflows == [{file: ".github/workflows/ci.yml", jobs: [{name: "lint", run: ["npm run lint"]}, {name: "test", run: ["npm ci\nnpm test"]}]}]'
-if command -v yq >/dev/null 2>&1; then
+if yq_available; then
   discover_json "discover: workflow jobs and run lines (yq)" "$WORKFLOW_FILTER and .ciParser == \"yq\""
 else
-  skip "discover: workflow jobs and run lines (yq)" "yq not installed"
+  yq_missing "discover: workflow jobs and run lines (yq)"
 fi
 discover_json "discover: workflow jobs and run lines (awk fallback)" "$WORKFLOW_FILTER and .ciParser == \"awk\"" 0
 discover_json "discover: .claude in .gitignore detected" '.hasGitignoreClaude == true'
@@ -788,7 +807,7 @@ managed_block() {
   printf '<!-- BEGIN OpenRig MANAGED BLOCK: %s -->\n%s\n<!-- END OpenRig MANAGED BLOCK: %s -->\n' "$1" "$2" "$1"
 }
 
-if [[ "$(yq --version 2>/dev/null || true)" == *mikefarah* ]]; then
+if yq_available; then
   section "agents-md (generator)"
   mkfixture agents-md
   agents_md_run "agents-md: generate → exit 0" 0 ""
@@ -883,7 +902,7 @@ if [[ "$(yq --version 2>/dev/null || true)" == *mikefarah* ]]; then
   check "agents-md hook: hand-written AGENTS.md untouched" test "$(cat "$FIXTURE/AGENTS.md")" = '# Hand-written'
   expect 0 agents-md '{"hook_event_name":"PostToolUse","tool_name":"Edit","cwd":"'"$FIXTURE"'","tool_input":{}}'
 else
-  skip "agents-md" "yq (mikefarah v4) not installed"
+  yq_missing "agents-md"
 fi
 
 section "port/discover (agentsMd)"

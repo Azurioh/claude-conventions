@@ -67,12 +67,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-yq_version=""
-if command -v yq >/dev/null 2>&1; then
-  yq_version="$(yq --version 2>/dev/null || true)"
-fi
-if [[ "$yq_version" != *mikefarah* ]]; then
-  printf 'agents-md: yq (mikefarah v4) is required — brew install yq, or see https://github.com/mikefarah/yq\n' >&2
+if ! has_mikefarah_yq; then
+  printf 'agents-md: yq (mikefarah v4) is required — %s\n' "$(yq_install_hint)" >&2
   exit 1
 fi
 
