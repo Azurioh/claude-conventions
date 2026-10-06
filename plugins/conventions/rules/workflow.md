@@ -8,6 +8,7 @@
   deliberate PR `{{INTEGRATION_BRANCH}} → {{PRODUCTION_BRANCH}}` via `/conventions:release`.
 - Branch off the integration branch:
   `git switch {{INTEGRATION_BRANCH}} && git pull && git switch -c feat/<name>`.
+  Branch names are `<type>/<kebab-case-slug>`, `<type>` from the commit types.
 - Never commit directly on `{{PRODUCTION_BRANCH}}` or `{{INTEGRATION_BRANCH}}`;
   never force-push (the plugin hooks refuse both).
 <!-- conventions:end workflow.branches -->
@@ -21,14 +22,17 @@
   commits in a PR — fold them first: `git commit --fixup` +
   `git rebase --autosquash`.
 - **Never commit without the user's OK.**
+- Never push or open a PR without the user's OK for that change, and never
+  merge into `{{INTEGRATION_BRANCH}}` or `{{PRODUCTION_BRANCH}}`: the human merges.
 <!-- conventions:end workflow.commits -->
 
 <!-- conventions:begin workflow.pr -->
 ## PR hygiene
 
 - Open every PR with `/conventions:pr`, never a raw `gh pr create`. Title uses
-  the same `<type>(scope): description` format. Body states what/why and the
-  verification command that was run.
+  the same `<type>(scope): description` format. Body states what/why, the
+  verification command that was run and `Closes #N` when an issue is linked.
+  Titles, bodies and review comments are English.
 - **Size cap: ≤ {{PR_SIZE_LINES}} changed lines (additions + deletions) and
   ≤ {{PR_SIZE_FILES}} files**, excluding lockfiles, generated migrations and
   vendored UI components (`prSize.exclude` in `.claude/conventions.json`). The
@@ -74,3 +78,13 @@
 - Long-term choices → `/conventions:adr`; recurring traps → `pitfalls.md`
   (see `knowledge.md`).
 <!-- conventions:end workflow.verification -->
+
+<!-- conventions:begin workflow.agents-md -->
+## AGENTS.md (Codex)
+
+- `AGENTS.md` is generated from `CLAUDE.md` + `.claude/rules/**` (the plugin's
+  `agents-md` hook reruns the generator on every rule edit). Never edit it by
+  hand: change the rule, and the next generation carries it to Codex.
+- `knowledge.md` and `pitfalls.md` are shared by Claude and Codex — a trap
+  recorded by either one is read by both.
+<!-- conventions:end workflow.agents-md -->

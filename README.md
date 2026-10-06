@@ -17,7 +17,8 @@ under [`plugins/conventions/rules/`](plugins/conventions/rules/) (see Rules).
 
 ## Install
 
-Once per machine. Prerequisites: Claude Code CLI, `jq`, `git`, `gh`, and the
+Once per machine. Prerequisites: Claude Code CLI, `jq`, `git`, `gh`, `yq`
+(mikefarah v4, for the `AGENTS.md` generator), and the
 personal `ccprofile` script at `~/.claude/bin/ccprofile` (per-project
 plugin/skill profiles; optional, see below) for the per-project step.
 
@@ -44,13 +45,14 @@ Run in the repository root, once.
 | 1. enable the plugin | `ccprofile apply conventions` | `enabledPlugins["conventions@claude-conventions"] = true` — written to `.claude/settings.local.json` when `.claude/settings.json` already owns the key (the port step seeds it that way), else to `.claude/settings.json` |
 | 2. start a session | `claude` | the branch banner appears; hooks warn `conventions/<hook>: .claude/conventions.json missing — skipped` until step 3 |
 | 3. port the rules | `/conventions:port-claude-config` | discovery → mapping table + open questions → **stops** → after your answers writes `CLAUDE.md`, `.claude/rules/{workflow,architecture,coding,knowledge,pitfalls}.md`, one `commands.md` per app, `.claude/settings.json`, `.claude/conventions.json`, `.gitignore` negations |
-| 4. app rules | `/conventions:app-rules <app>` (or `all`) | analysis of the app's code → preview of `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md` and the app's **Test layout** rows → **stops** → writes after confirmation (single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md`) |
-| 5. commit | `git add CLAUDE.md .claude .gitignore && git commit` | `.claude/settings.local.json` stays ignored |
+| 4. Codex rules | `"${CLAUDE_PLUGIN_ROOT}/scripts/agents-md.sh"` (run by step 3; afterwards the `agents-md` hook regenerates it on every rule edit) | `AGENTS.md` generated from `CLAUDE.md` + `.claude/rules/**` for OpenAI Codex: always-on rules inlined (pointers above 32 KiB), a `Scoped rules` table for the `paths:` rules, OpenRig managed blocks kept; `.agents/skills → ../.claude/skills` symlink when `.claude/skills/` exists. A hand-written `AGENTS.md` is refused (move it into `.claude/rules/`, then `--force`); `--check` exits 1 when stale. Needs `yq` (mikefarah v4) |
+| 5. app rules | `/conventions:app-rules <app>` (or `all`) | analysis of the app's code → preview of `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md` and the app's **Test layout** rows → **stops** → writes after confirmation (single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md`) |
+| 6. commit | `git add CLAUDE.md AGENTS.md .agents .claude .gitignore && git commit` | `.claude/settings.local.json` stays ignored |
 
 A repository can stay at step 2 (guardrails that need no repository value —
 bare `git stash`, exact-pin — already work); the branch-related checks skip
 until `.claude/conventions.json` carries `integrationBranch`.
-Step 3 writes the generic rules (the same for every repository); step 4 writes
+Step 3 writes the generic rules (the same for every repository); step 5 writes
 what only this app's code can tell — rings, composition root, forbidden
 imports, test prerequisites — and a per-app implementer agent.
 
@@ -120,6 +122,7 @@ outside a git repository every hook exits 0 silently):
 | `deps-exact` | PreToolUse `Bash` | `add`/`install` of a package without the exact flag for the detected manager (pnpm `-E`, npm `--save-exact`, yarn/bun `--exact`) | `<pkg>@<x.y.z>`; commands of another package manager; undetected manager → warning |
 | `pr-size` | PreToolUse `Bash` | `gh pr create` whose diff against `--base` exceeds `prSize.lines` or `prSize.files` after `prSize.exclude` | `--label <prSize.label>`; the release pair; missing `--base` (guard-git already refuses it) |
 | `format` | PostToolUse `Edit\|Write` | nothing (never blocks) | runs `biome check --write` / `prettier --write` on `.ts .tsx .js .mjs .cjs .json .css` via `node_modules/.bin/<formatter>` or PATH; silent when not installed; one stderr line when the formatter fails |
+| `agents-md` | PostToolUse `Edit\|Write` | nothing (never blocks) | when the touched file is the repo-root `CLAUDE.md` or a `.claude/rules/**/*.md` and `AGENTS.md` exists with the GENERATED header, reruns `scripts/agents-md.sh`; never creates `AGENTS.md`, never touches a hand-written one; one stderr line when the generator fails |
 | `branch-info` | SessionStart | nothing | prints `git branch:`, `upstream:`, a `WARNING:` when on a protected branch, and a `conventions:` line when the file is missing, not JSON, lacks `integrationBranch`, or has `integrationBranch == productionBranch` |
 
 ## Rules
@@ -167,6 +170,10 @@ Agents (available as `conventions:<name>` subagents):
 | `rules-reviewer` | sonnet | review a diff against the repository's `.claude/rules/**`; ranked findings, no praise |
 | `test-writer` | sonnet | write the tests `/conventions:test-gaps` reported as missing, in the app's harness; verifies through `/conventions:verify-app` |
 | `repo-explorer` | haiku | cheap read-only exploration of the repository with project memory |
+| `duplication-reviewer` | sonnet | read-only hunt for duplication a diff introduces, inside it and against existing code; cites both locations |
+| `correctness-reviewer` | opus | read-only bug hunt on a diff (logic, edge cases, lost errors, races, determinism, type escapes); each finding names its trigger |
+| `relevance-reviewer` | opus | read-only check that a diff covers the linked issue's acceptance criteria and nothing more (scope creep, YAGNI, dead code, needless deps) |
+| `security-reviewer` | sonnet | read-only security review of a diff (isolation, authn/z, validation, injection, secrets, deps, personal data) |
 
 ## Update
 
@@ -203,14 +210,14 @@ or when a sentinel section in a target file has lost its end marker.
 ## Development
 
 ```bash
-shellcheck plugins/conventions/hooks/*.sh plugins/conventions/skills/port-claude-config/scripts/*.sh tests/*.sh
+shellcheck plugins/conventions/hooks/*.sh plugins/conventions/scripts/*.sh plugins/conventions/skills/port-claude-config/scripts/*.sh tests/*.sh
 tests/run.sh                                  # "OK: N assertions"; SKIP lines when biome/prettier are not resolvable
 claude plugin validate plugins/conventions    # plugin manifest
 claude plugin validate .                      # marketplace manifest
 ```
 
 CI (`.github/workflows/ci.yml`) runs shellcheck and `tests/run.sh` on Ubuntu with
-`jq` only — no Node, no Claude CLI.
+`jq` and the runner image's preinstalled `yq` — no Node, no Claude CLI.
 
 Layout:
 
@@ -219,15 +226,18 @@ Layout:
 | `.claude-plugin/marketplace.json` | marketplace `claude-conventions`, one plugin entry |
 | `plugins/conventions/.claude-plugin/plugin.json` | plugin manifest; version must match the marketplace entry |
 | `plugins/conventions/hooks/` | `hooks.json`, `lib.sh` (segment splitting, value lookup, detectors), one script per hook |
+| `plugins/conventions/scripts/agents-md.sh` | `AGENTS.md` generator for Codex (`--check`, `--force`, `--repo <dir>`), shared by the port skill and the `agents-md` hook |
 | `plugins/conventions/rules/` | the rule templates (`CLAUDE.md`, `{workflow,architecture,coding,knowledge,pitfalls,commands}.md`) and `_project/{settings.json,conventions.json,gitignore}`; rendered by the port skill, sentinel sections refreshed by `--refresh` |
 | `plugins/conventions/skills/<name>/SKILL.md` | skills; `port-claude-config/` also holds `scripts/{discover,render,refresh}.sh` |
 | `plugins/conventions/agents/<name>.md` | agents |
 | `profiles/conventions.json` | ccprofile profile |
 | `schema/conventions.schema.json` | JSON Schema (draft 2020-12) of `.claude/conventions.json` |
-| `tests/run.sh` | copies each fixture to a temp dir, `git init`s it, feeds hand-built hook events, asserts exit code, stderr, stdout and file contents; also covers `discover.sh`, `render.sh`, `refresh.sh` |
+| `tests/run.sh` | copies each fixture to a temp dir, `git init`s it, feeds hand-built hook events, asserts exit code, stderr, stdout and file contents; also covers `discover.sh`, `render.sh`, `refresh.sh`, `agents-md.sh` (skipped without `yq`) |
 | `tests/fixtures/pnpm-biome` | `pnpm-lock.yaml`, `biome.json`, `apps/api` workspace, conventions with `apps` |
 | `tests/fixtures/npm-prettier` | `package-lock.json`, `.prettierrc`, conventions with `integrationBranch` only |
 | `tests/fixtures/no-conventions` | `pnpm-lock.yaml` only, no `.claude/` |
+| `tests/fixtures/agents-md` | `CLAUDE.md` with imports, always-on and `paths:`-scoped rules under `.claude/rules/` |
+| `tests/golden/AGENTS.md` | the expected `agents-md.sh` output for `tests/fixtures/agents-md` |
 
 Releasing a change under `plugins/conventions/`: bump `version` in
 `plugins/conventions/.claude-plugin/plugin.json` **and** in the plugin entry of
