@@ -88,16 +88,14 @@ plugins/conventions/
 │   ├── deps-audit/SKILL.md
 │   └── port-claude-config/
 │       ├── SKILL.md                 # discover → mapping table → confirm → write | --refresh
-│       ├── scripts/
-│       │   ├── discover.sh          # prints repo facts as JSON (lockfile, formatter, CI, branches, apps)
-│       │   ├── render.sh            # resolves {{PLACEHOLDERS}} from conventions.json
-│       │   └── refresh.sh           # replaces sentinel sections in place
-│       └── templates/
-│           ├── CLAUDE.md
-│           ├── rules/{workflow,architecture,knowledge,pitfalls,commands}.md
-│           ├── settings.json
-│           ├── conventions.json
-│           └── gitignore
+│       └── scripts/
+│           ├── discover.sh          # prints repo facts as JSON (lockfile, formatter, CI, branches, apps)
+│           ├── render.sh            # resolves {{PLACEHOLDERS}} from conventions.json
+│           └── refresh.sh           # replaces sentinel sections in place
+├── rules/                           # rule templates (moved in 0.3.0 from skills/port-claude-config/templates/)
+│   ├── CLAUDE.md
+│   ├── {workflow,architecture,coding,knowledge,pitfalls,commands}.md
+│   └── _project/{settings.json,conventions.json,gitignore}
 └── agents/
     ├── ci-triage.md
     ├── rules-reviewer.md
@@ -116,8 +114,9 @@ README.md
 ```
 
 **Structure Decision**: single plugin under `plugins/conventions/` so the marketplace can
-grow (a second plugin later) without moving files; templates and helper scripts live inside
-the `port-claude-config` skill so the skill resolves them relative to its own directory;
+grow (a second plugin later) without moving files; the helper scripts live inside the
+`port-claude-config` skill and the rule templates under `plugins/conventions/rules/` (moved
+in 0.3.0) so they are visible at the top of the plugin and resolved via `CLAUDE_PLUGIN_ROOT`;
 tests and schema are repository-level because they are not shipped to consumers.
 
 ## Implementation phases (input for /speckit-tasks)

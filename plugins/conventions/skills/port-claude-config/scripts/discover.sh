@@ -2,7 +2,8 @@
 # discover.sh [root] — prints one JSON object describing the target repository
 # for the port-claude-config skill: package manager, formatter, lockfiles,
 # workspaces, app guess, branches, CI workflows (jobs and their run: lines),
-# existing Claude config and whether .gitignore already mentions .claude.
+# existing Claude config, whether .gitignore already mentions .claude and the
+# state of AGENTS.md (absent / generated / hand-written).
 # Read-only. bash + jq; yq (mikefarah v4) is used for YAML when present, with
 # a conservative awk fallback otherwise (the "ciParser" key says which ran;
 # DISCOVER_YQ=0 forces the fallback so the tests can cover it).
@@ -35,10 +36,10 @@ if [ -z "$pm" ] && [ -f "$root/package.json" ]; then
 fi
 formatter="$(detect_formatter "$root")"
 
-# YAML parser for pnpm-workspace.yaml and the CI workflows: yq when available
-# (and not disabled), else the line-oriented awk fallbacks below.
+# YAML parser for pnpm-workspace.yaml and the CI workflows: mikefarah yq when
+# available (and not disabled), else the line-oriented awk fallbacks below.
 ci_parser="none"
-if [ "${DISCOVER_YQ:-1}" != "0" ] && command -v yq >/dev/null 2>&1; then
+if [ "${DISCOVER_YQ:-1}" != "0" ] && has_mikefarah_yq; then
   ci_parser="yq"
 fi
 
@@ -245,6 +246,15 @@ has_claude_md=false
 if [ -f "$root/CLAUDE.md" ]; then
   has_claude_md=true
 fi
+# agentsMd: "generated" when AGENTS.md carries the agents-md.sh header (the
+# port regenerates it), "hand-written" otherwise (never overwritten).
+agents_md="absent"
+if [ -f "$root/AGENTS.md" ]; then
+  agents_md="hand-written"
+  if agents_md_generated "$root/AGENTS.md"; then
+    agents_md="generated"
+  fi
+fi
 has_gitignore_claude=false
 if [ -f "$root/.gitignore" ] && grep -qE '^!?\.claude(/|$)' "$root/.gitignore"; then
   has_gitignore_claude=true
@@ -266,6 +276,7 @@ jq -n \
   --argjson claudePaths "$claude_paths_json" \
   --argjson claudeHooks "$claude_hooks_json" \
   --argjson hasGitignoreClaude "$has_gitignore_claude" \
+  --arg agentsMd "$agents_md" \
   '{
     root: $root,
     packageManager: (if $pm == "" then null else $pm end),
@@ -279,5 +290,6 @@ jq -n \
     ciParser: $ciParser,
     ciWorkflows: $ciWorkflows,
     existingClaude: {claudeMd: $claudeMd, paths: $claudePaths, hooks: $claudeHooks},
-    hasGitignoreClaude: $hasGitignoreClaude
+    hasGitignoreClaude: $hasGitignoreClaude,
+    agentsMd: $agentsMd
   }'

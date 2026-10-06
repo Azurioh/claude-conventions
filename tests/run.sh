@@ -136,6 +136,25 @@ skip() {
   printf 'SKIP %s (%s)\n' "$1" "$2"
 }
 
+# yq_available — true when mikefarah yq is on PATH (lib.sh#has_mikefarah_yq).
+yq_available() {
+  (
+    # shellcheck source=../plugins/conventions/hooks/lib.sh
+    source "$HOOKS_DIR/lib.sh"
+    has_mikefarah_yq
+  )
+}
+
+# yq_missing <label> — records the yq-dependent tests <label> as skipped, or as
+# failed when REQUIRE_YQ=1 (set by CI so a missing yq cannot pass silently).
+yq_missing() {
+  if [ "${REQUIRE_YQ:-0}" = "1" ]; then
+    fail "$1" "yq (mikefarah v4) not installed and REQUIRE_YQ=1"
+  else
+    skip "$1" "yq (mikefarah v4) not installed"
+  fi
+}
+
 # has_formatter <name> <root> — true when <name> is resolvable the way
 # format.sh resolves it: <root>/node_modules/.bin/<name> or on PATH.
 has_formatter() {
@@ -149,6 +168,16 @@ stdout_has() {
 
 stdout_lacks() {
   ! grep -qF -- "$1" "$LAST_STDOUT"
+}
+
+# agents_md_generated_file <file> — true when <file> carries the GENERATED
+# header of agents-md.sh (lib.sh#agents_md_generated).
+agents_md_generated_file() {
+  (
+    # shellcheck source=../plugins/conventions/hooks/lib.sh
+    source "$HOOKS_DIR/lib.sh"
+    agents_md_generated "$1"
+  )
 }
 
 # files_differ <a> <b> — true when the two files have different content.
@@ -464,10 +493,10 @@ discover_json "discover: no workflow → empty list" '.ciWorkflows == []'
 write_workflow
 printf '.claude/*\n!.claude/rules/\n' >"$FIXTURE/.gitignore"
 WORKFLOW_FILTER='.ciWorkflows == [{file: ".github/workflows/ci.yml", jobs: [{name: "lint", run: ["npm run lint"]}, {name: "test", run: ["npm ci\nnpm test"]}]}]'
-if command -v yq >/dev/null 2>&1; then
+if yq_available; then
   discover_json "discover: workflow jobs and run lines (yq)" "$WORKFLOW_FILTER and .ciParser == \"yq\""
 else
-  skip "discover: workflow jobs and run lines (yq)" "yq not installed"
+  yq_missing "discover: workflow jobs and run lines (yq)"
 fi
 discover_json "discover: workflow jobs and run lines (awk fallback)" "$WORKFLOW_FILTER and .ciParser == \"awk\"" 0
 discover_json "discover: .claude in .gitignore detected" '.hasGitignoreClaude == true'
@@ -539,15 +568,15 @@ render_fails() {
 
 section "port/render"
 mkfixture pnpm-biome
-TPL="$PORT_DIR/templates"
+TPL="$ROOT/plugins/conventions/rules"
 FULL_CONV="$TMP/conventions-full.json"
 jq '. + {packageManager: "pnpm", formatter: "biome"}' "$FIXTURE/.claude/conventions.json" >"$FULL_CONV"
 printf '| App | Path | Stack | Verify |\n|---|---|---|---|\n| api | %sapps/api%s | node | %s.claude/rules/api/commands.md%s |\n' '`' '`' '`' '`' >"$TMP/app-table.md"
 printf '["Bash(pnpm lint*)", "Bash(git status*)"]\n' >"$TMP/permissions.json"
 
-render_fails "render: fixture conventions lack packageManager → exit 1" '{{PKG_MANAGER}}' "$TPL/rules/workflow.md" "$FIXTURE/.claude/conventions.json"
+render_fails "render: fixture conventions lack packageManager → exit 1" '{{PKG_MANAGER}}' "$TPL/workflow.md" "$FIXTURE/.claude/conventions.json"
 render_fails "render: CLAUDE.md without --app-table → exit 1" '{{APP_TABLE}}' "$TPL/CLAUDE.md" "$FULL_CONV"
-render_fails "render: settings.json without --permissions → exit 1" '{{PERMISSIONS}}' "$TPL/settings.json" "$FULL_CONV"
+render_fails "render: settings.json without --permissions → exit 1" '{{PERMISSIONS}}' "$TPL/_project/settings.json" "$FULL_CONV"
 printf 'x {{NOT_A_PLACEHOLDER}} y\n' >"$TMP/bogus.md"
 render_fails "render: unknown placeholder → exit 1" '{{NOT_A_PLACEHOLDER}}' "$TMP/bogus.md" "$FULL_CONV"
 
@@ -556,43 +585,51 @@ check "render: CLAUDE.md carries the app table" stdout_has "| api | \`apps/api\`
 check "render: CLAUDE.md names the integration branch" stdout_has "Every PR targets \`develop\`"
 check "render: CLAUDE.md empty deploy note" stdout_has "is **production**. \`develop\`"
 check "render: CLAUDE.md ≤ 40 lines" test "$(wc -l <"$LAST_STDOUT")" -le 40
-for tpl in workflow architecture knowledge pitfalls commands; do
-  render_ok "render: rules/$tpl.md" "$TPL/rules/$tpl.md" "$FULL_CONV"
+for tpl in workflow architecture coding knowledge pitfalls commands; do
+  render_ok "render: rules $tpl.md" "$TPL/$tpl.md" "$FULL_CONV"
 done
-render_ok "render: rules/workflow.md exact flag" "$TPL/rules/workflow.md" "$FULL_CONV"
+render_ok "render: workflow.md exact flag" "$TPL/workflow.md" "$FULL_CONV"
 check "render: workflow.md uses pnpm add -E" stdout_has 'pnpm add -E <pkg>'
 check "render: workflow.md size cap defaults" stdout_has '≤ 400 changed lines'
-render_ok "render: rules/architecture.md" "$TPL/rules/architecture.md" "$FULL_CONV"
+render_ok "render: architecture.md" "$TPL/architecture.md" "$FULL_CONV"
 check "render: architecture.md has the Test layout table" stdout_has '| layer | source glob | test dir | test kind |'
 check "render: architecture.md has sentinels" stdout_has '<!-- conventions:begin architecture.ports -->'
-render_ok "render: rules/knowledge.md" "$TPL/rules/knowledge.md" "$FULL_CONV"
+check "render: architecture.md has the structure and boundaries sections" \
+  test "$(grep -cE '^<!-- conventions:begin architecture\.(structure|boundaries) -->$' "$LAST_STDOUT")" = 2
+render_ok "render: coding.md" "$TPL/coding.md" "$FULL_CONV"
+check "render: coding.md has its three sections" \
+  test "$(grep -cE '^<!-- conventions:begin coding\.(changes|style|dependencies) -->$' "$LAST_STDOUT")" = 3
+check "render: coding.md forbids the inner break" stdout_has 'with an inner'
+check "render: coding.md ≤ 60 lines" test "$(wc -l <"$LAST_STDOUT")" -le 60
+render_ok "render: knowledge.md" "$TPL/knowledge.md" "$FULL_CONV"
 check "render: knowledge.md default ADR dir" stdout_has 'docs/adr/NNNN-<slug>.md'
-render_ok "render: gitignore" "$TPL/gitignore" "$FULL_CONV"
+render_ok "render: gitignore" "$TPL/_project/gitignore" "$FULL_CONV"
 check "render: gitignore negates rules/" stdout_has '!.claude/rules/'
-render_ok "render: settings.json" "$TPL/settings.json" "$FULL_CONV" --permissions "$TMP/permissions.json"
+render_ok "render: settings.json" "$TPL/_project/settings.json" "$FULL_CONV" --permissions "$TMP/permissions.json"
 check "render: settings.json is JSON with empty enabledPlugins and force-push denied" \
   jq -e '.enabledPlugins == {} and (.permissions.deny | index("Bash(git push --force*)")) != null and (.permissions.allow | index("Bash(pnpm lint*)")) != null and (has("hooks") | not)' "$LAST_STDOUT" >/dev/null
-render_ok "render: conventions.json" "$TPL/conventions.json" "$FULL_CONV"
+render_ok "render: conventions.json" "$TPL/_project/conventions.json" "$FULL_CONV"
 # shellcheck disable=SC2016  # "$schema" is a jq key, not a shell variable
 check "render: conventions.json is JSON with the schema and defaults" \
   jq -e '(.["$schema"] | endswith("schema/conventions.schema.json")) and .integrationBranch == "develop" and .prSize.lines == 400 and .prSize.label == "large-pr" and .adrDir == "docs/adr"' "$LAST_STDOUT" >/dev/null
 
 NPM_CONV="$TMP/conventions-npm.json"
 jq -n '{integrationBranch: "develop", packageManager: "npm", deployNote: "deployed on merge", prSize: {lines: 300, files: 10, label: "big"}, adrDir: "doc/decisions"}' >"$NPM_CONV"
-render_ok "render: npm + deploy note + overrides" "$TPL/rules/workflow.md" "$NPM_CONV"
+render_ok "render: npm + deploy note + overrides" "$TPL/workflow.md" "$NPM_CONV"
 check "render: npm exact flag" stdout_has 'npm add --save-exact <pkg>'
 check "render: production defaults to main with the deploy note" stdout_has "\`main\` = production (deployed on merge)"
 check "render: size cap overrides" stdout_has '≤ 300 changed lines'
 check "render: label override" stdout_has '--label big'
-render_ok "render: knowledge.md adrDir override" "$TPL/rules/knowledge.md" "$NPM_CONV"
+render_ok "render: knowledge.md adrDir override" "$TPL/knowledge.md" "$NPM_CONV"
 check "render: adrDir override" stdout_has 'doc/decisions/NNNN-<slug>.md'
-check "render: missing conventions file → exit 1" test "$("$PORT_DIR/scripts/render.sh" "$TPL/gitignore" "$TMP/does-not-exist.json" >/dev/null 2>&1; echo $?)" = 1
+check "render: missing conventions file → exit 1" test "$("$PORT_DIR/scripts/render.sh" "$TPL/_project/gitignore" "$TMP/does-not-exist.json" >/dev/null 2>&1; echo $?)" = 1
 
 # --- port/refresh ------------------------------------------------------------
 # port_fixture — renders the sentinel-bearing templates into the current
 # fixture the way the port skill does (CLAUDE.md with an app table,
-# rules/{workflow,architecture,knowledge,pitfalls}.md, one commands.md for the
-# api app) from a conventions.json holding every value the templates need.
+# rules/{workflow,architecture,coding,knowledge,pitfalls}.md, one commands.md
+# for the api app) from a conventions.json holding every value the templates
+# need.
 port_fixture() {
   local f
   jq '. + {packageManager: "pnpm", formatter: "biome", deployNote: "deployed on merge"}' \
@@ -600,8 +637,8 @@ port_fixture() {
   cp "$TMP/conventions-ported.json" "$FIXTURE/.claude/conventions.json"
   mkdir -p "$FIXTURE/.claude/rules/api"
   "$PORT_DIR/scripts/render.sh" "$TPL/CLAUDE.md" "$FIXTURE/.claude/conventions.json" --app-table "$TMP/app-table.md" >"$FIXTURE/CLAUDE.md"
-  for f in workflow architecture knowledge pitfalls; do
-    "$PORT_DIR/scripts/render.sh" "$TPL/rules/$f.md" "$FIXTURE/.claude/conventions.json" >"$FIXTURE/.claude/rules/$f.md"
+  for f in workflow architecture coding knowledge pitfalls; do
+    "$PORT_DIR/scripts/render.sh" "$TPL/$f.md" "$FIXTURE/.claude/conventions.json" >"$FIXTURE/.claude/rules/$f.md"
   done
   printf -- '---\npaths:\n  - "apps/api/**"\n---\n\n# api — commands\n\n    pnpm -C apps/api lint && pnpm -C apps/api test\n' >"$FIXTURE/.claude/rules/api/commands.md"
 }
@@ -689,14 +726,18 @@ check "refresh: unchanged templates → workflow.md byte-identical" cmp -s "$SNA
 # removed from the fixture's knowledge.md to exercise the append path.
 EDITED_TPL="$TMP/templates-edited"
 cp -R "$TPL" "$EDITED_TPL"
-rewrite "$EDITED_TPL/rules/workflow.md" sed "s#^- \*\*Never commit without the user's OK.\*\*\$#- **Never commit without the user's explicit OK (refreshed line).**#"
-check "refresh: edited template carries the new line" grep -qF 'refreshed line' "$EDITED_TPL/rules/workflow.md"
+rewrite "$EDITED_TPL/workflow.md" sed "s#^- \*\*Never commit without the user's OK.\*\*\$#- **Never commit without the user's explicit OK (refreshed line).**#"
+check "refresh: edited template carries the new line" grep -qF 'refreshed line' "$EDITED_TPL/workflow.md"
 rewrite "$FIXTURE/.claude/rules/knowledge.md" drop_section knowledge.pitfalls
 cp "$FIXTURE/.claude/rules/knowledge.md" "$SNAP/.claude/rules/knowledge.md"
+rewrite "$EDITED_TPL/coding.md" sed 's#^  visible in the header — no #  visible in the header (refreshed line) — no #'
+check "refresh: edited coding.md template carries the new line" grep -qF 'header (refreshed line)' "$EDITED_TPL/coding.md"
+rewrite "$FIXTURE/.claude/rules/coding.md" drop_section coding.dependencies
+cp "$FIXTURE/.claude/rules/coding.md" "$SNAP/.claude/rules/coding.md"
 
 refresh_run "refresh: edited template → exit 0" 0 "$EDITED_TPL"
-check "refresh: changed-file list is exactly knowledge.md and workflow.md" \
-  test "$(sort "$LAST_STDOUT" | tr '\n' ' ')" = ".claude/rules/knowledge.md .claude/rules/workflow.md "
+check "refresh: changed-file list is exactly coding.md, knowledge.md and workflow.md" \
+  test "$(sort "$LAST_STDOUT" | tr '\n' ' ')" = ".claude/rules/coding.md .claude/rules/knowledge.md .claude/rules/workflow.md "
 check "refresh: changed line landed inside workflow.commits" grep -qF 'explicit OK (refreshed line)' "$FIXTURE/.claude/rules/workflow.md"
 check "refresh: old line gone from workflow.md" test "$(grep -cF "Never commit without the user's OK." "$FIXTURE/.claude/rules/workflow.md")" = 0
 check "refresh: workflow.md outside sentinels byte-identical" same_outside "$SNAP/.claude/rules/workflow.md" "$FIXTURE/.claude/rules/workflow.md"
@@ -709,12 +750,18 @@ check "refresh: knowledge.md keeps its former content first" starts_with "$SNAP/
 check "refresh: missing section appended with a notice" grep -qF '<!-- conventions:refresh — section knowledge.pitfalls was missing' "$FIXTURE/.claude/rules/knowledge.md"
 check "refresh: appended section carries its sentinels and body" \
   test "$(grep -cF -e '<!-- conventions:begin knowledge.pitfalls -->' -e '<!-- conventions:end knowledge.pitfalls -->' -e 'under 40 lines' "$FIXTURE/.claude/rules/knowledge.md")" = 3
+check "refresh: changed line landed inside coding.style" grep -qF 'header (refreshed line)' "$FIXTURE/.claude/rules/coding.md"
+check "refresh: old line gone from coding.md" test "$(grep -cF 'visible in the header — no' "$FIXTURE/.claude/rules/coding.md")" = 0
+check "refresh: missing coding.dependencies appended with a notice" grep -qF '<!-- conventions:refresh — section coding.dependencies was missing' "$FIXTURE/.claude/rules/coding.md"
+check "refresh: appended coding.dependencies carries its sentinels and body" \
+  test "$(grep -cF -e '<!-- conventions:begin coding.dependencies -->' -e '<!-- conventions:end coding.dependencies -->' -e 'Workspace packages are built before' "$FIXTURE/.claude/rules/coding.md")" = 3
 
 cp -R "$FIXTURE/.claude" "$TMP/refresh-after-claude"
 refresh_run "refresh: second run → exit 0" 0 "$EDITED_TPL"
 check "refresh: second run → no changed file" test ! -s "$LAST_STDOUT"
 check "refresh: second run → workflow.md stable" cmp -s "$TMP/refresh-after-claude/rules/workflow.md" "$FIXTURE/.claude/rules/workflow.md"
 check "refresh: second run → knowledge.md stable" cmp -s "$TMP/refresh-after-claude/rules/knowledge.md" "$FIXTURE/.claude/rules/knowledge.md"
+check "refresh: second run → coding.md stable" cmp -s "$TMP/refresh-after-claude/rules/coding.md" "$FIXTURE/.claude/rules/coding.md"
 
 # Files without sentinels are skipped; a section without its end marker is
 # refused; a repo without conventions.json is refused.
@@ -731,6 +778,140 @@ mkdir -p "$TMP/no-conventions-root"
 FIXTURE="$TMP/no-conventions-root"
 refresh_run "refresh: no conventions.json → exit 1" 1
 check "refresh: missing conventions.json named on stderr" grep -qF '.claude/conventions.json missing' "$LAST_STDERR"
+
+# --- agents-md ----------------------------------------------------------------
+AGENTS_MD="$ROOT/plugins/conventions/scripts/agents-md.sh"
+GOLDEN="$ROOT/tests/golden/AGENTS.md"
+
+# agents_md_run <label> <expected-exit> [stderr-substring] [args…] — runs
+# agents-md.sh --repo <current fixture> with the extra args and asserts the
+# exit code and, when non-empty, the stderr substring. Output kept in
+# LAST_STDOUT / LAST_STDERR.
+agents_md_run() {
+  local label="$1" want="$2" needle="${3:-}" got=0
+  shift 3
+  "$AGENTS_MD" --repo "$FIXTURE" "$@" >"$LAST_STDOUT" 2>"$LAST_STDERR" || got=$?
+  if [ "$got" -ne "$want" ]; then
+    fail "$label" "agents-md.sh exit=$got (want $want)" "stderr=$(cat "$LAST_STDERR")"
+    return 0
+  fi
+  if [ -n "$needle" ] && ! grep -qF -- "$needle" "$LAST_STDERR"; then
+    fail "$label" "stderr lacks '$needle'" "stderr=$(cat "$LAST_STDERR")"
+    return 0
+  fi
+  pass "$label"
+}
+
+# managed_block <id> <text> — prints one OpenRig managed block.
+managed_block() {
+  printf '<!-- BEGIN OpenRig MANAGED BLOCK: %s -->\n%s\n<!-- END OpenRig MANAGED BLOCK: %s -->\n' "$1" "$2" "$1"
+}
+
+if yq_available; then
+  section "agents-md (generator)"
+  mkfixture agents-md
+  agents_md_run "agents-md: generate → exit 0" 0 ""
+  check "agents-md: stdout names the written file" stdout_has "AGENTS.md"
+  check "agents-md: output matches the golden file" cmp -s "$GOLDEN" "$FIXTURE/AGENTS.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-first.md"
+  agents_md_run "agents-md: second run → exit 0" 0 ""
+  check "agents-md: second run → byte-identical" cmp -s "$TMP/agents-first.md" "$FIXTURE/AGENTS.md"
+  check "agents-md: second run → nothing written" test ! -s "$LAST_STDOUT"
+  find "$FIXTURE/AGENTS.md" -delete
+  (cd "$FIXTURE/.claude/rules/api" && "$AGENTS_MD" >/dev/null)
+  check "agents-md: default repo = git toplevel of the cwd" cmp -s "$GOLDEN" "$FIXTURE/AGENTS.md"
+  check "agents-md: always-on frontmatter stripped" test "$(grep -c '^description:' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: imported rule not repeated" test "$(grep -c '^## .claude/rules/workflow.md$' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: non-rule import becomes a pointer" grep -qxF "read \`docs/guide.md\`" "$FIXTURE/AGENTS.md"
+
+  agents_md_run "agents-md: --check up to date → exit 0" 0 "" --check
+  printf -- '- New workflow line.\n' >>"$FIXTURE/.claude/rules/workflow.md"
+  agents_md_run "agents-md: --check after a rule edit → exit 1" 1 "AGENTS.md is out of date" --check
+  check "agents-md: --check message is one line" test "$(wc -l <"$LAST_STDERR")" -eq 1
+  check "agents-md: --check never writes" cmp -s "$TMP/agents-first.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: regenerate after the edit" 0 ""
+  check "agents-md: edit landed" grep -qxF -- '- New workflow line.' "$FIXTURE/AGENTS.md"
+
+  # Managed blocks: one inserted in the middle, one at the end. --check ignores
+  # them; a regeneration keeps both verbatim, at the end, in original order.
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-clean.md"
+  {
+    head -n 1 "$TMP/agents-clean.md"
+    managed_block skills 'OpenRig skills: use the rig.'
+    tail -n +2 "$TMP/agents-clean.md"
+    printf '\n'
+    managed_block seat 'Seat: codex-1'
+  } >"$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check ignores managed blocks → exit 0" 0 "" --check
+  agents_md_run "agents-md: regenerate with managed blocks" 0 ""
+  {
+    cat "$TMP/agents-clean.md"
+    printf '\n'
+    managed_block skills 'OpenRig skills: use the rig.'
+    printf '\n'
+    managed_block seat 'Seat: codex-1'
+  } >"$TMP/agents-blocks.md"
+  check "agents-md: managed blocks kept verbatim at the end, in order" cmp -s "$TMP/agents-blocks.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: regenerate with managed blocks again" 0 ""
+  check "agents-md: managed blocks stable across runs" cmp -s "$TMP/agents-blocks.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check with blocks at the end → exit 0" 0 "" --check
+
+  find "$FIXTURE/AGENTS.md" -delete
+  agents_md_run "agents-md: --check without AGENTS.md → exit 1" 1 "AGENTS.md missing" --check
+  check "agents-md: --check creates nothing" test ! -e "$FIXTURE/AGENTS.md"
+
+  printf '# Hand-written\n\nProject notes for Codex.\n' >"$FIXTURE/AGENTS.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-hand.md"
+  agents_md_run "agents-md: hand-written AGENTS.md refused → exit 2" 2 "move its content into CLAUDE.md or .claude/rules/"
+  check "agents-md: hand-written AGENTS.md untouched" cmp -s "$TMP/agents-hand.md" "$FIXTURE/AGENTS.md"
+  agents_md_run "agents-md: --check on hand-written → exit 1" 1 "hand-written" --check
+  agents_md_run "agents-md: --force overwrites hand-written" 0 "" --force
+  check "agents-md: --force output carries the header" agents_md_generated_file "$FIXTURE/AGENTS.md"
+
+  # Oversize: one 40 000-byte always-on rule pushes the file past 32 KiB.
+  mkfixture agents-md
+  awk 'BEGIN { for (i = 0; i < 500; i++) { printf "- filler rule line %04d that only exists to exceed the cap........\n", i } }' \
+    >"$FIXTURE/.claude/rules/big.md"
+  agents_md_run "agents-md: oversize → exit 0 with a size warning" 0 "bytes (> 32768"
+  check "agents-md: oversize → pointer mode" grep -qF 'Read these files before any change' "$FIXTURE/AGENTS.md"
+  check "agents-md: oversize → big rule listed as a pointer" grep -qxF -- "- \`.claude/rules/big.md\`" "$FIXTURE/AGENTS.md"
+  check "agents-md: oversize → big rule not inlined" test "$(grep -c 'filler rule line' "$FIXTURE/AGENTS.md")" = 0
+  check "agents-md: oversize → file under the cap" test "$(wc -c <"$FIXTURE/AGENTS.md")" -le 32768
+  check "agents-md: oversize → scoped table kept" grep -qF "| \`apps/web/**\` | \`.claude/rules/web/commands.md\` |" "$FIXTURE/AGENTS.md"
+
+  printf -- '---\npaths: [\n---\nbroken\n' >"$FIXTURE/.claude/rules/broken.md"
+  agents_md_run "agents-md: invalid frontmatter → exit 1 naming the file" 1 "invalid frontmatter in .claude/rules/broken.md"
+
+  section "agents-md (hook)"
+  mkfixture agents-md
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: no AGENTS.md → none created" test ! -e "$FIXTURE/AGENTS.md"
+  "$AGENTS_MD" --repo "$FIXTURE" >/dev/null
+  printf -- '- Hook-added line.\n' >>"$FIXTURE/.claude/rules/workflow.md"
+  cp "$FIXTURE/AGENTS.md" "$TMP/agents-hook-before.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/docs/guide.md")"
+  check "agents-md hook: unrelated file → AGENTS.md untouched" cmp -s "$TMP/agents-hook-before.md" "$FIXTURE/AGENTS.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: rule edit → regenerated" grep -qxF -- '- Hook-added line.' "$FIXTURE/AGENTS.md"
+  check "agents-md hook: silent on success" test ! -s "$LAST_STDERR"
+  printf '\nCLAUDE.md hook line.\n' >>"$FIXTURE/CLAUDE.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/CLAUDE.md")"
+  check "agents-md hook: CLAUDE.md edit → regenerated" grep -qxF 'CLAUDE.md hook line.' "$FIXTURE/AGENTS.md"
+  printf '# Hand-written\n' >"$FIXTURE/AGENTS.md"
+  expect 0 agents-md "$(edit_event "$FIXTURE/.claude/rules/workflow.md")"
+  check "agents-md hook: hand-written AGENTS.md untouched" test "$(cat "$FIXTURE/AGENTS.md")" = '# Hand-written'
+  expect 0 agents-md '{"hook_event_name":"PostToolUse","tool_name":"Edit","cwd":"'"$FIXTURE"'","tool_input":{}}'
+else
+  yq_missing "agents-md"
+fi
+
+section "port/discover (agentsMd)"
+mkfixture agents-md
+discover_json "discover: agentsMd absent" '.agentsMd == "absent"'
+printf '# Hand-written\n' >"$FIXTURE/AGENTS.md"
+discover_json "discover: agentsMd hand-written" '.agentsMd == "hand-written"'
+cp "$GOLDEN" "$FIXTURE/AGENTS.md"
+discover_json "discover: agentsMd generated" '.agentsMd == "generated"'
 
 # ---------------------------------------------------------------------------
 # Summary

@@ -5,6 +5,10 @@
   format, ownership boundary, protocol between apps, anything a future dev
   would ask "why?" about) → run `/conventions:adr` before opening the PR.
   ADRs live in `{{ADR_DIR}}/NNNN-<slug>.md`; the most recent one is the model.
+- **An accepted ADR is a rule** with the weight of `.claude/rules/`; a
+  proposed one is guidance; an ADR's open points are not rules yet. A change
+  that contradicts an accepted ADR follows it or adds a superseding ADR in the
+  same PR, which also sets the old one's status to superseded.
 <!-- conventions:end knowledge.adr -->
 
 <!-- conventions:begin knowledge.pitfalls -->
@@ -16,3 +20,13 @@
 - Do not record: linter/type errors, one-off typos, things the tests already
   explain.
 <!-- conventions:end knowledge.pitfalls -->
+
+<!-- conventions:begin knowledge.rules -->
+- **Where a new rule goes**: generic (holds for any app) → the matching file
+  here; app-specific → `.claude/rules/<app>/` (written by
+  `/conventions:app-rules`), one line per fact with its evidence path. A rule
+  already stated in the generic files is never repeated in an app file.
+- **A rule states a constraint, a boundary, a prerequisite or a trap** — never
+  what a reader sees in the code. A guide longer than three lines goes under
+  `docs/` and the rule links to it.
+<!-- conventions:end knowledge.rules -->

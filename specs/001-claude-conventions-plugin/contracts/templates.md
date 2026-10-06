@@ -1,9 +1,11 @@
 # Contract: rule templates and refresh
 
-Location: `plugins/conventions/skills/port-claude-config/templates/`
-(`CLAUDE.md`, `rules/workflow.md`, `rules/architecture.md`, `rules/knowledge.md`,
-`rules/pitfalls.md`, `rules/commands.md` (per-app sheet skeleton), `settings.json`,
-`conventions.json`, `gitignore`).
+Location: `plugins/conventions/rules/` (`CLAUDE.md`, `workflow.md`, `architecture.md`,
+`coding.md`, `knowledge.md`, `pitfalls.md`, `commands.md` (per-app sheet skeleton),
+`_project/settings.json`, `_project/conventions.json`, `_project/gitignore`) — moved in
+0.3.0 from `skills/port-claude-config/templates/` so the rules are visible at the top of
+the plugin; `CLAUDE.md` targets `CLAUDE.md`, every other `<name>.md` targets
+`.claude/rules/<name>.md`.
 
 Placeholders (resolved once at port time): `{{INTEGRATION_BRANCH}}`, `{{PRODUCTION_BRANCH}}`,
 `{{PKG_MANAGER}}`, `{{PKG_EXACT_FLAG}}`, `{{FORMATTER}}`, `{{PR_SIZE_LINES}}`,

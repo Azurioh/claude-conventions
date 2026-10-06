@@ -1,3 +1,7 @@
 # Let shellcheck follow "source" into lib.sh next to each hook.
 external-sources=true
 source-path=SCRIPTDIR
+# lib.sh helpers take an optional argument with a default (project_root [cwd],
+# detect_pm [root]…); older shellcheck releases (Ubuntu, Debian) flag every
+# argument-less call of such a helper.
+disable=SC2119,SC2120
