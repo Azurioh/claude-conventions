@@ -407,6 +407,44 @@ commit_files feat/files-16 16 1 src/many/f
 expect 2 pr-size "$(bash_event 'gh pr create --base main --title t')" 'cap 400 lines, 15 files'
 check "pr-size: default cap needs no conventions.json" test "$(grep -c 'conventions.json' "$LAST_STDERR")" = 0
 
+# --- pr-size (linked worktree) ----------------------------------------------
+# Claude Code in a linked worktree sets CLAUDE_PROJECT_DIR to the main checkout
+# while the event cwd is the worktree: the worktree's conventions must apply.
+
+# set_pr_lines <dir> <lines> — rewrites <dir>/.claude/conventions.json with
+# prSize.lines set to <lines>.
+set_pr_lines() {
+  local file="$1/.claude/conventions.json"
+  jq --argjson n "$2" '.prSize.lines = $n' "$file" >"$file.tmp"
+  mv "$file.tmp" "$file"
+}
+
+mkfixture pnpm-biome
+section "pr-size (linked worktree, CLAUDE_PROJECT_DIR = main checkout)"
+set_pr_lines "$FIXTURE" 400
+git -C "$FIXTURE" commit -q -am "fixture: main checkout cap 400"
+git -C "$FIXTURE" branch -q -f develop main
+WORKTREE="$TMP/worktree-$RANDOM"
+git -C "$FIXTURE" worktree add -q -b feat/in-worktree "$WORKTREE" develop
+set_pr_lines "$WORKTREE" 2000
+seq 1 416 | sed 's/^/line /' >"$WORKTREE/big.ts"
+git -C "$WORKTREE" add -A
+git -C "$WORKTREE" commit -q -m "fixture: worktree cap 2000, 416 lines"
+expect 0 pr-size "$(bash_event 'gh pr create --base develop --title t' "$WORKTREE")"
+# The same diff measured from the main checkout keeps the main checkout's cap.
+git -C "$FIXTURE" switch -q -c feat/in-main feat/in-worktree
+set_pr_lines "$FIXTURE" 400
+expect 2 pr-size "$(bash_event 'gh pr create --base develop --title t')" 'cap 400 lines'
+set_pr_lines "$WORKTREE" 300
+expect 2 pr-size "$(bash_event 'gh pr create --base develop --title t' "$WORKTREE")" 'cap 300 lines'
+
+section "project_root (cwd outside git → CLAUDE_PROJECT_DIR)"
+mkdir -p "$TMP/nogit-cwd"
+check "project_root: CLAUDE_PROJECT_DIR wins when cwd is not a git work tree" \
+  test "$(bash -c 'source "$1/lib.sh"; HOOK_CWD="$2"; project_root' _ "$HOOKS_DIR" "$TMP/nogit-cwd")" = "$FIXTURE"
+check "project_root: cwd in a linked worktree resolves to the worktree root" \
+  test "$(bash -c 'source "$1/lib.sh"; HOOK_CWD="$2"; project_root' _ "$HOOKS_DIR" "$WORKTREE")" = "$(git -C "$WORKTREE" rev-parse --show-toplevel)"
+
 # --- format (no-conventions) -------------------------------------------------
 mkfixture no-conventions
 section "format (no-conventions, no formatter config)"
