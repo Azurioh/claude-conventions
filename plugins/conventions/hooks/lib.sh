@@ -11,8 +11,9 @@ GIT_C_PATH=""
 # GIT_C_PATH can read both without a command substitution (which would subshell).
 # shellcheck disable=SC2034  # read by the sourcing hook, not by lib.sh
 GIT_SEG=""
-# Set by the sourcing hook from the event's .cwd; read by project_root when
-# CLAUDE_PROJECT_DIR is unset and no explicit directory is passed.
+# Set by the sourcing hook from the event's .cwd; read by project_root when no
+# explicit directory is passed. Its git work tree wins over CLAUDE_PROJECT_DIR,
+# so a session in a linked worktree reads that worktree's conventions.
 HOOK_CWD=""
 
 # ---------------------------------------------------------------------------
@@ -176,11 +177,18 @@ in_git_repo() {
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
-# project_root [cwd] — prints the project root: $CLAUDE_PROJECT_DIR when set,
-# else <cwd> (default: HOOK_CWD), else the git toplevel of the current
-# directory, else the current directory itself.
+# project_root [cwd] — prints the project root. The conventions that apply are
+# those of the checkout the command runs in: when <cwd> (default: HOOK_CWD) is
+# inside a git work tree, its toplevel — a linked worktree's own root, not the
+# main checkout CLAUDE_PROJECT_DIR points to. Otherwise $CLAUDE_PROJECT_DIR
+# when set, else <cwd>, else the git toplevel of the current directory, else the
+# current directory itself.
 project_root() {
   local cwd="${1:-${HOOK_CWD:-}}" top
+  if [ -n "$cwd" ] && top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)"; then
+    printf '%s' "$top"
+    return 0
+  fi
   if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
     printf '%s' "$CLAUDE_PROJECT_DIR"
     return 0

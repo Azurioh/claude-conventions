@@ -11,7 +11,8 @@ Registered in `plugins/conventions/hooks/hooks.json`:
 | SessionStart | — | `${CLAUDE_PLUGIN_ROOT}/hooks/branch-info.sh` | 5 s | never |
 
 Input: stdin JSON from Claude Code (`tool_name`, `tool_input.command` / `tool_input.file_path`,
-`cwd`). Project root: `$CLAUDE_PROJECT_DIR`, fallback `cwd`.
+`cwd`). Project root: the git toplevel of `cwd` (a linked worktree's own root, so its
+`.claude/conventions.json` applies), else `$CLAUDE_PROJECT_DIR`, else `cwd`.
 
 Output: deny = exit 2 + single stderr line `conventions/<hook>: <reason>`; pass = exit 0,
 no stdout (except `branch-info.sh`, whose stdout is session context). Missing
