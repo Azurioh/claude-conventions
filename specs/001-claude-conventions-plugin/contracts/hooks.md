@@ -23,14 +23,18 @@ Behaviour (per hook):
 
 - `guard-git.sh`: refuse `git push --force|-f|--force-with-lease` to protected branches;
   refuse bare `git stash` / `git stash pop`; refuse `git commit` / `git push` while on a
-  protected branch; refuse `gh pr create` whose `--base` is the production branch,
-  except the release pair (`--base <production> --head <integration>`); any other base
-  (integration or a stacked feature branch) passes.
+  protected branch (integration, production and every `promotionBranches` entry); refuse
+  `gh pr create` whose `--base` is the production branch, except the release PR
+  (`--base <production> --head <last promotion branch>`, or `--head <integration>` when
+  `promotionBranches` is empty); any other base (integration, a promotion branch, a stacked
+  feature branch) passes.
 - `deps-exact.sh`: refuse `<pm> add|install <pkg>` without the exact-pin flag for the detected
   package manager; ambiguous/undetected package manager → warning, pass.
 - `pr-size.sh`: on `gh pr create`, compute `git diff --numstat <base>...HEAD` minus excluded
   globs; refuse when lines > `prSize.lines` or files > `prSize.files` unless
-  `--label <prSize.label>` is present; skip for the release pair.
+  `--label <prSize.label>` is present; skip for every promotion hop along
+  integration → `promotionBranches`… → production (`--base <next> --head <previous>`;
+  without `promotionBranches`, the release pair).
 - `format.sh`: if the edited file has a formatter-relevant extension, run
   `biome check --write <file>` or `prettier --write <file>` through
   `node_modules/.bin/<formatter>` (else the formatter on PATH, else skip); never fails.

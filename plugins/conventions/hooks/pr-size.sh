@@ -5,8 +5,10 @@
 # when given (local branch, else origin/<h>), falling back to HEAD otherwise.
 # Values (.claude/conventions.json, with defaults): prSize.lines (400),
 # prSize.files (15), prSize.label (large-pr), prSize.exclude (lockfiles,
-# **/migrations/**, **/components/ui/**). The release pair
-# (--base <production> --head <integration>) is exempt.
+# **/migrations/**, **/components/ui/**). Every promotion hop along
+# integration → promotionBranches… → production (--base <next> --head
+# <previous>) is exempt; without promotionBranches that is the release pair
+# (--base <production> --head <integration>).
 set -euo pipefail
 
 # shellcheck source=lib.sh
@@ -50,6 +52,17 @@ if [ "${#excludes[@]}" -eq 0 ]; then
 fi
 integration="$(conv_get integrationBranch "")"
 production="$(production_branch)"
+# The promotion chain, in order: integration, promotion branches…, production.
+chain=()
+if [ -n "$integration" ]; then
+  chain+=("$integration")
+  while IFS= read -r promo; do
+    if [ -n "$promo" ]; then
+      chain+=("$promo")
+    fi
+  done < <(promotion_branches)
+  chain+=("$production")
+fi
 
 # has_label <seg> — true when any --label/-l value carries the escape-hatch label.
 has_label() {
@@ -58,6 +71,18 @@ has_label() {
     val="$(strip_quotes "${BASH_REMATCH[3]}")"
     rest="${BASH_REMATCH[4]}"
     if [[ ",$val," == *",$label,"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# is_promotion_hop <base> <head> — true when <head> → <base> is one step of the
+# promotion chain.
+is_promotion_hop() {
+  local i
+  for ((i = 1; i < ${#chain[@]}; i++)); do
+    if [ "$1" = "${chain[i]}" ] && [ "$2" = "${chain[i - 1]}" ]; then
       return 0
     fi
   done
@@ -92,8 +117,8 @@ excluded() {
 base="$(flag_value_last "$create_seg" '--base|-B')"
 head_ref="$(flag_value_last "$create_seg" '--head|-H')"
 
-if [ -n "$integration" ] && [ "$base" = "$production" ] && [ "$head_ref" = "$integration" ]; then
-  exit 0 # the release PR is deliberately large
+if is_promotion_hop "$base" "$head_ref"; then
+  exit 0 # promotion PRs (the release PR included) are deliberately large
 fi
 if has_label "$create_seg"; then
   exit 0

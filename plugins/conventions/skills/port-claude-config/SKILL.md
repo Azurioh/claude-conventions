@@ -40,6 +40,7 @@ Print, in this order, and nothing else:
 3. **Open questions** — only those the discovery could not settle; give the detected default for each:
    - integration branch (`develop` if present, else the default branch — say when both coincide, that is a one-branch flow and the hooks will report it);
    - production branch = `defaultBranch`, and a one-clause deploy note (empty when nothing deploys automatically);
+   - promotion branches between integration and production, in order (e.g. `demo` for staging → demo → main; default none);
    - PR size cap (default 400 lines / 15 files, label `large-pr`);
    - which guessed dirs are apps (libraries usually dropped; none → single-app repo);
    - is `.claude/` committed (default yes → `.gitignore` negations; no → `.claude/` ignored entirely, only `CLAUDE.md` tracked).
@@ -60,7 +61,9 @@ Run the commands you will write **before** writing them. Every command that land
        prSize:{lines:$lines, files:$files}} + (if $note == "" then {} else {deployNote:$note} end)' > /tmp/answers.json
    "$SKILL/scripts/render.sh" "$RULES/_project/conventions.json" /tmp/answers.json \
      | jq --argjson apps '<{"name":"path",…} or {}>' --arg note "<deploy note or empty>" \
-       '(if $apps == {} then del(.apps) else .apps = $apps end) | (if $note == "" then . else .deployNote = $note end)' \
+       --argjson promo '<["demo",…] or []>' \
+       '(if $apps == {} then del(.apps) else .apps = $apps end) | (if $note == "" then . else .deployNote = $note end)
+        | (if $promo == [] then . else .promotionBranches = $promo end)' \
      > .claude/conventions.json
    ```
    Existing `.claude/conventions.json` with `merge` chosen: the rendered file is the base and the existing keys win — `jq -s '.[0] * .[1]' <rendered> .claude/conventions.json`. `packageManager` unset in the discovery → ask which one before rendering (the templates need it). `deployNote` stays in the file when set: `--refresh` re-renders `{{DEPLOY_NOTE}}` from it.

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash) guard for the branch model and shared worktrees. Protected
-# branches are the integration branch (.claude/conventions.json, required) and
-# the production branch (override, else origin/HEAD, else main).
+# branches are the integration branch (.claude/conventions.json, required), the
+# production branch (override, else origin/HEAD, else main) and every branch of
+# the optional promotionBranches chain (integration → promotion… → production).
 # Blocks (exit 2 + one reason line on stderr):
-#   - gh pr create without --base, or with --base <production> unless it is the
-#     release pair (--base <production> --head <integration>)
+#   - gh pr create without --base, or with --base <production> unless --head is
+#     the last promotion branch, or the integration branch when the chain is
+#     empty (the release pair). A base that is a promotion branch is not
+#     restricted (promotion hops and back-merge fixes).
 #   - git push (forced or not) whose target is a protected branch
 #   - git commit / git push while checked out on a protected branch
 #   - bare "git stash" and "git stash pop" (stash stack is shared across worktrees)
@@ -36,14 +39,26 @@ deny() {
 # missing conventions file.
 INTEGRATION=""
 PRODUCTION=""
+PROMOTIONS=()
+# The only branch allowed as --head of a PR into production.
+RELEASE_HEAD=""
 BRANCHES_STATE=""
 
-# resolve_branches — fills INTEGRATION / PRODUCTION once; returns 1 (after the
-# lib.sh warning) when the integration branch is not configured.
+# resolve_branches — fills INTEGRATION / PRODUCTION / PROMOTIONS / RELEASE_HEAD
+# once; returns 1 (after the lib.sh warning) when the integration branch is not
+# configured.
 resolve_branches() {
+  local promo
   if [ -z "$BRANCHES_STATE" ]; then
     if INTEGRATION="$(conv_require integrationBranch guard-git)"; then
       PRODUCTION="$(production_branch)"
+      RELEASE_HEAD="$INTEGRATION"
+      while IFS= read -r promo; do
+        if [ -n "$promo" ]; then
+          PROMOTIONS+=("$promo")
+          RELEASE_HEAD="$promo"
+        fi
+      done < <(promotion_branches)
       BRANCHES_STATE="ok"
     else
       BRANCHES_STATE="missing"
@@ -52,9 +67,22 @@ resolve_branches() {
   [ "$BRANCHES_STATE" = "ok" ]
 }
 
-# is_protected <branch> — true when <branch> is the integration or production branch.
+# is_protected <branch> — true when <branch> is the integration, the production
+# or a promotion branch.
 is_protected() {
-  [ -n "$1" ] && { [ "$1" = "$INTEGRATION" ] || [ "$1" = "$PRODUCTION" ]; }
+  local promo
+  if [ -z "$1" ]; then
+    return 1
+  fi
+  if [ "$1" = "$INTEGRATION" ] || [ "$1" = "$PRODUCTION" ]; then
+    return 0
+  fi
+  for promo in ${PROMOTIONS[@]+"${PROMOTIONS[@]}"}; do
+    if [ "$1" = "$promo" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # branch_of <dir> — prints the checked-out branch of <dir>, empty when unknown.
@@ -110,10 +138,10 @@ for raw in ${segments[@]+"${segments[@]}"}; do
     base="$(flag_value_last "$seg" '--base|-B')"
     head_ref="$(flag_value_last "$seg" '--head|-H')"
     if [ -z "$base" ]; then
-      deny "always pass --base: $INTEGRATION for a normal PR, the previous stack branch for a stacked PR (release PRs: --base $PRODUCTION --head $INTEGRATION)"
+      deny "always pass --base: $INTEGRATION for a normal PR, the previous stack branch for a stacked PR (release PRs: --base $PRODUCTION --head $RELEASE_HEAD)"
     fi
-    if [ "$base" = "$PRODUCTION" ] && [ "$head_ref" != "$INTEGRATION" ]; then
-      deny "$PRODUCTION only receives the release PR from $INTEGRATION (--base $PRODUCTION --head $INTEGRATION). Use --base $INTEGRATION."
+    if [ "$base" = "$PRODUCTION" ] && [ "$head_ref" != "$RELEASE_HEAD" ]; then
+      deny "$PRODUCTION only receives the release PR from $RELEASE_HEAD (--base $PRODUCTION --head $RELEASE_HEAD). Use --base $INTEGRATION."
     fi
   fi
 

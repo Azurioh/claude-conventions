@@ -10,6 +10,7 @@ INT="$(jq -r '.integrationBranch' .claude/conventions.json)"
 PROD="$(jq -r '.productionBranch // empty' .claude/conventions.json)"
 [ -n "$PROD" ] || PROD="$(git symbolic-ref -q --short refs/remotes/origin/HEAD | sed 's#^origin/##')"
 [ -n "$PROD" ] || PROD=main
+jq -r '.promotionBranches[]?' .claude/conventions.json
 jq -r '.apps // {} | to_entries[] | "\(.key)\t\(.value)"' .claude/conventions.json
 ```
 
@@ -24,3 +25,5 @@ Preconditions: `git fetch origin "$INT" "$PROD"`; working tree clean; you are NO
 4. Show title + body to the user and wait for approval.
 5. `gh pr create --base "$PROD" --head "$INT" --title "<title>" --body-file <tmp>`; then `gh pr checks <n> --watch`. This head/base pair is the one PR exempt from the size cap; nothing else is.
 6. Report the PR URL and check status. Never merge, never push to `$PROD`.
+
+**`promotionBranches` set** (e.g. `["demo"]` = `$INT → demo → $PROD`): the release goes hop by hop, one PR per hop, each merged with a merge commit (never squash or rebase). Open only the next hop whose target is behind its source: `--base <next> --head <previous>` (first hop `--base <first promotion> --head "$INT"`, last hop `--base "$PROD" --head <last promotion>`). Steps 1–3 use that pair instead of `$INT`/`$PROD`; the last hop keeps the `release:` title, earlier hops are titled `chore: promote <previous> to <next>`. Every hop is exempt from the size cap; `$PROD` accepts a PR only from the last promotion branch. Wait for the user to merge a hop before opening the next one.

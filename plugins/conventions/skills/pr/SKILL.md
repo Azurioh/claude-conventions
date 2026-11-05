@@ -10,6 +10,7 @@ INT="$(jq -r '.integrationBranch' .claude/conventions.json)"
 PROD="$(jq -r '.productionBranch // empty' .claude/conventions.json)"
 [ -n "$PROD" ] || PROD="$(git symbolic-ref -q --short refs/remotes/origin/HEAD | sed 's#^origin/##')"
 [ -n "$PROD" ] || PROD=main
+PROMO="$(jq -r '.promotionBranches[]?' .claude/conventions.json)"
 LINES="$(jq -r '.prSize.lines // 400' .claude/conventions.json)"
 FILES="$(jq -r '.prSize.files // 15' .claude/conventions.json)"
 LABEL="$(jq -r '.prSize.label // "large-pr"' .claude/conventions.json)"
@@ -18,7 +19,7 @@ jq -r '.prSize.exclude[]?' .claude/conventions.json
 
 Default excludes when `prSize.exclude` is absent: `**/pnpm-lock.yaml`, `**/package-lock.json`, `**/yarn.lock`, `**/migrations/**`, `**/components/ui/**`. Turn every exclude glob into a git pathspec `':!<glob>'`.
 
-Preconditions: working tree clean; `git fetch origin "$INT"`; current branch is neither `$PROD` nor `$INT`.
+Preconditions: working tree clean; `git fetch origin "$INT"`; current branch is neither `$PROD`, `$INT` nor one of `$PROMO`.
 
 Linked issue: take `<N>` from the branch name (`<type>/<N>-<slug>`), else from a `(#<N>)` in the commits (`git log --format=%s "origin/$INT..HEAD"`), else ask the user (they may answer "none"). Check it with `gh issue view <N> --json state,title`. Keywords only link and auto-close when the PR base is the repo's default branch; when `$INT` is not the default branch (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), say so in the report: the issue will not close on merge.
 

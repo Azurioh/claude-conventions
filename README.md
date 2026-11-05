@@ -120,6 +120,7 @@ default value. Unknown keys are ignored.
 |---|---|---|---|
 | `integrationBranch` | string | — | none: hooks needing it warn and skip |
 | `productionBranch` | string | branch `origin/HEAD` points to | `main` |
+| `promotionBranches` | string[] | — | empty; ordered branches between integration and production (`["demo"]` for staging → demo → main), each protected and promoted by a merge-commit PR |
 | `packageManager` | `pnpm` \| `npm` \| `yarn` \| `bun` | lockfile: `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `bun.lock`/`bun.lockb` | unset when two lockfiles coexist (dependency guard warns, passes) |
 | `formatter` | `biome` \| `prettier` \| `none` | `biome.json`/`biome.jsonc` → biome; `.prettierrc*`, `prettier.config.*`, `"prettier"` key in `package.json` → prettier | `none` |
 | `prSize.lines` | integer | — | `400` |
@@ -135,9 +136,9 @@ outside a git repository every hook exits 0 silently):
 
 | Hook | Event | Refuses | Passes / notes |
 |---|---|---|---|
-| `guard-git` | PreToolUse `Bash` | force push or direct push to the production or integration branch; `git commit` / `git push` while checked out on one of them; `gh pr create` without `--base` or with `--base <production>`; bare `git stash`, `git stash pop` | release pair `--base <production> --head <integration>`; force push to a feature branch; `git stash push -m …` / `apply` |
+| `guard-git` | PreToolUse `Bash` | force push or direct push to the production, integration or a promotion branch; `git commit` / `git push` while checked out on one of them; `gh pr create` without `--base` or with `--base <production>`; bare `git stash`, `git stash pop` | release PR `--base <production> --head <last promotion branch>` (`--head <integration>` without `promotionBranches`); any `--base <promotion branch>`; force push to a feature branch; `git stash push -m …` / `apply` |
 | `deps-exact` | PreToolUse `Bash` | `add`/`install` of a package without the exact flag for the detected manager (pnpm `-E`, npm `--save-exact`, yarn/bun `--exact`) | `<pkg>@<x.y.z>`; commands of another package manager; undetected manager → warning |
-| `pr-size` | PreToolUse `Bash` | `gh pr create` whose diff against `--base` exceeds `prSize.lines` or `prSize.files` after `prSize.exclude` | `--label <prSize.label>`; the release pair; missing `--base` (guard-git already refuses it) |
+| `pr-size` | PreToolUse `Bash` | `gh pr create` whose diff against `--base` exceeds `prSize.lines` or `prSize.files` after `prSize.exclude` | `--label <prSize.label>`; every promotion hop `--base <next> --head <previous>` (the release pair without `promotionBranches`); missing `--base` (guard-git already refuses it) |
 | `format` | PostToolUse `Edit\|Write` | nothing (never blocks) | runs `biome check --write` / `prettier --write` on `.ts .tsx .js .mjs .cjs .json .css` via `node_modules/.bin/<formatter>` or PATH; silent when not installed; one stderr line when the formatter fails |
 | `agents-md` | PostToolUse `Edit\|Write` | nothing (never blocks) | when the touched file is the repo-root `CLAUDE.md` or a `.claude/rules/**/*.md` and `AGENTS.md` exists with the GENERATED header, reruns `scripts/agents-md.sh`; never creates `AGENTS.md`, never touches a hand-written one; one stderr line when the generator fails |
 | `branch-info` | SessionStart | nothing | prints `git branch:`, `upstream:`, a `WARNING:` when on a protected branch, and a `conventions:` line when the file is missing, not JSON, lacks `integrationBranch`, or has `integrationBranch == productionBranch` |
@@ -170,11 +171,11 @@ Skills (invoke as `/conventions:<name>`):
 
 | Skill | Purpose | Reads |
 |---|---|---|
-| `pr` | open the PR the repo way (conventional title, what/why/verification body, base = integration branch); `--stack` splits an oversize diff into a GitHub-native stack | `integrationBranch`, `productionBranch`, `prSize.*`, `apps` |
+| `pr` | open the PR the repo way (conventional title, what/why/verification body, base = integration branch); `--stack` splits an oversize diff into a GitHub-native stack | `integrationBranch`, `productionBranch`, `promotionBranches`, `prSize.*`, `apps` |
 | `verify-app <app\|all>` | run one app's CI sequence from `.claude/rules/<app>/commands.md` (single-app: `.claude/rules/commands.md`) and triage failures; forks into `verifier` | `apps` |
 | `test-gaps <app\|all>` | list changed source files without a matching test, using the **Test layout** table of `.claude/rules/architecture.md`; forks into `verifier` | `integrationBranch`, `apps` |
 | `adr <title>` | write the next `NNNN-<slug>.md` decision record | `adrDir`, `apps` |
-| `release` | prepare the integration → production PR (changelog by app, migrations, env vars); never merges; user-invoked only | `integrationBranch`, `productionBranch`, `apps` |
+| `release` | prepare the integration → production PR (changelog by app, migrations, env vars), hop by hop through `promotionBranches` when set; never merges; user-invoked only | `integrationBranch`, `productionBranch`, `promotionBranches`, `apps` |
 | `deps-audit` | run the dependency audit with the repo's package manager and fix advisories (exact-pinned bumps, transitive pins); user-invoked only | `packageManager` |
 | `port-claude-config [--refresh]` | port the rule templates into the repository (see Per-project setup); `--refresh` re-renders the template-owned sections only (see Update) | everything |
 | `app-rules <app\|all>` | analyse one app's code and write its project-specific rules — `.claude/rules/<app>/architecture.md`, optional `conventions.md`, `.claude/agents/<app>-dev.md`, the app's **Test layout** rows — after a preview and confirmation; single-app: `.claude/rules/app.md`, `.claude/agents/app-dev.md` | `apps`, `adrDir` |

@@ -379,6 +379,51 @@ git -C "$FIXTURE" switch -q develop
 expect 0 branch-info "$(session_event)"
 check "branch-info: warns on develop" stdout_has "WARNING: on develop"
 
+# --- guard-git (promotion) ---------------------------------------------------
+# staging → demo → main: only demo may open the PR into main, every hop and a
+# back-merge fix into demo pass, and demo is protected like the other two.
+mkfixture promotion
+git -C "$FIXTURE" branch -q demo
+section "guard-git (promotion, staging → demo → main, on main)"
+expect 0 guard-git "$(bash_event 'gh pr create --base main --head demo --title "chore: promote demo"')"
+expect 2 guard-git "$(bash_event 'gh pr create --base main --head staging --title "release: x"')" '--base main --head demo'
+expect 2 guard-git "$(bash_event 'gh pr create --base main --title t')" 'only receives the release PR from demo'
+expect 2 guard-git "$(bash_event 'gh pr create --title t')" 'release PRs: --base main --head demo'
+expect 0 guard-git "$(bash_event 'gh pr create --base demo --head staging --title "chore: promote staging"')"
+expect 0 guard-git "$(bash_event 'gh pr create --base demo --head chore/x --title "chore: merge main into demo"')"
+expect 0 guard-git "$(bash_event 'gh pr create --base staging --title t')"
+expect 2 guard-git "$(bash_event 'git push origin demo')" "direct push to 'demo'"
+expect 2 guard-git "$(bash_event 'git push --force origin demo')" "force push to 'demo'"
+git -C "$FIXTURE" switch -q demo
+section "guard-git (promotion, on demo)"
+expect 2 guard-git "$(bash_event 'git commit -m x')" "no commits on 'demo'"
+expect 2 guard-git "$(bash_event 'git push')" "you are on 'demo'"
+git -C "$FIXTURE" switch -q -c chore/x
+section "guard-git (promotion, on chore/x)"
+expect 0 guard-git "$(bash_event 'git commit -m x')"
+expect 0 guard-git "$(bash_event 'git push origin chore/x')"
+check "guard-git: chore/x is silent" test ! -s "$LAST_STDERR"
+
+# --- pr-size (promotion) -----------------------------------------------------
+# Each branch of the chain is 500 lines ahead of the next one: the two hops are
+# exempt, a skipped hop or a feature PR into demo is still capped.
+mkfixture promotion
+git -C "$FIXTURE" switch -q -c demo
+seq 1 500 | sed 's/^/demo /' >"$FIXTURE/demo.ts"
+git -C "$FIXTURE" add -A
+git -C "$FIXTURE" commit -q -m "fixture: oversize demo"
+git -C "$FIXTURE" switch -q staging
+git -C "$FIXTURE" merge -q demo
+seq 1 500 | sed 's/^/staging /' >"$FIXTURE/staging.ts"
+git -C "$FIXTURE" add -A
+git -C "$FIXTURE" commit -q -m "fixture: oversize staging"
+section "pr-size (promotion, staging → demo → main)"
+expect 0 pr-size "$(bash_event 'gh pr create --base main --head demo --title "chore: promote demo"')"
+expect 0 pr-size "$(bash_event 'gh pr create --base demo --head staging --title "chore: promote staging"')"
+expect 2 pr-size "$(bash_event 'gh pr create --base main --head staging --title t')" 'conventions/pr-size:'
+commit_files chore/x 1 401 src/big
+expect 2 pr-size "$(bash_event 'gh pr create --base demo --head chore/x --title t')" 'conventions/pr-size:'
+
 # --- guard-git (no-conventions) ----------------------------------------------
 # No .claude/ at all: the checks that need the integration branch warn once and
 # pass; the stash rule needs no value and still applies.

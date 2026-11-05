@@ -19,7 +19,16 @@
     "productionBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Deployed branch, only reachable through the release pair (gh pr create --base <productionBranch> --head <integrationBranch>). Default: the branch origin/HEAD points to, else main. Must differ from integrationBranch."
+      "description": "Deployed branch, only reachable through the release PR (gh pr create --base <productionBranch> --head <last promotionBranches entry, else integrationBranch>). Default: the branch origin/HEAD points to, else main. Must differ from integrationBranch."
+    },
+    "promotionBranches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Ordered branches between integrationBranch and productionBranch, promoted one hop at a time by merge-commit PRs (e.g. [\"demo\"] for staging → demo → main). Each one is protected like the integration and production branches; only the last one may open the PR into productionBranch, and every hop (--base <next> --head <previous>) is exempt from the PR size cap. Default: empty (the release pair integrationBranch → productionBranch)."
     },
     "packageManager": {
       "type": "string",
