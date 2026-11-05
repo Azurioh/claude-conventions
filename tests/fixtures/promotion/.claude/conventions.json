@@ -1,0 +1,5 @@
+{
+  "integrationBranch": "staging",
+  "productionBranch": "main",
+  "promotionBranches": ["demo"]
+}

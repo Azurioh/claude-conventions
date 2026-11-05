@@ -342,6 +342,13 @@ production_branch() {
   printf 'main\n'
 }
 
+# promotion_branches [root] — prints the promotionBranches list from the
+# conventions file, one branch per line, in promotion order (integration →
+# first … last → production). Prints nothing when the key is absent or empty.
+promotion_branches() {
+  conv_get promotionBranches "" "${1:-}"
+}
+
 # ---------------------------------------------------------------------------
 # yq
 # ---------------------------------------------------------------------------
