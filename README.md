@@ -171,7 +171,7 @@ Skills (invoke as `/conventions:<name>`):
 
 | Skill | Purpose | Reads |
 |---|---|---|
-| `pr` | open the PR the repo way (conventional title, what/why/verification body, base = integration branch); `--stack` splits an oversize diff into a GitHub-native stack | `integrationBranch`, `productionBranch`, `promotionBranches`, `prSize.*`, `apps` |
+| `pr` | open the PR the repo way (conventional title, what/why/verification body, base = integration branch); `--stack` splits an oversize diff into a GitHub-native stack; `--draft` opens every PR as a draft | `integrationBranch`, `productionBranch`, `promotionBranches`, `prSize.*`, `apps` |
 | `verify-app <app\|all>` | run one app's CI sequence from `.claude/rules/<app>/commands.md` (single-app: `.claude/rules/commands.md`) and triage failures; forks into `verifier` | `apps` |
 | `test-gaps <app\|all>` | list changed source files without a matching test, using the **Test layout** table of `.claude/rules/architecture.md`; forks into `verifier` | `integrationBranch`, `apps` |
 | `adr <title>` | write the next `NNNN-<slug>.md` decision record | `adrDir`, `apps` |

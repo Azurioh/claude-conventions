@@ -29,7 +29,8 @@
 <!-- conventions:begin workflow.pr -->
 ## PR hygiene
 
-- Open every PR with `/conventions:pr`, never a raw `gh pr create`. Title uses
+- Open every PR with `/conventions:pr` (`--draft` for a draft), never a raw
+  `gh pr create`. Title uses
   the same `<type>(scope): description` format. Body states what/why, the
   verification command that was run and `Closes #N` when an issue is linked.
   Titles, bodies and review comments are English.
